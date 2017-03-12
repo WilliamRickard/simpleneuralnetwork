@@ -1,4 +1,6 @@
-# simpleneuralnetwork
+# Simple Neural Network
+
+(0) Standardise your data, preferabily in the range (0,1) or (-1,1). You can do this by dividing by the maximum data point for each variable. This will help the programme run much faster. There are other techniques you can use such as normalising the data which can help. 
 
 (1) In the text files "InputVariables.txt" and "OutputVaribles.txt" copy your input data and your output data into these, space deliminated.
 
