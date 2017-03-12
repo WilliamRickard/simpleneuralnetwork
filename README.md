@@ -72,15 +72,15 @@ Under the heading // Overall Setup change the values as required. The line "int 
         bool offline     = false;
         bool test        = true;
     
-    (7) Scroll down to this
-        ```
+   (7) Scroll down to this
+        
         // Testing setup
         int xRows                 = 13853;
         Set this to the number of examples you have of fresh data.
-        ```
-    (8) Compile and run the programme. 
+        
+   (8) Compile and run the programme. 
     
-    (9) In the programmes products directory there will now be a file named "ybar.txt" this file will contain the estimates for your output values. You can now compare this to the actual outputvalues. 
+   (9) In the programmes products directory there will now be a file named "ybar.txt" this file will contain the estimates for your output values. You can now compare this to the actual outputvalues. 
     
     
     
