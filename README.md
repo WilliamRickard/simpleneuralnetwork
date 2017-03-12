@@ -57,26 +57,27 @@ Under the heading // Overall Setup change the values as required. The line "int 
     Leave this.
     
     int xRows                 = 13853;
-   When are happy with our values for W1 and W2 and want to run our programme on fresh data, this is the number of examples.
+    When are happy with our values for W1 and W2 and want to run our programme on fresh data, this is the number of examples.
     
     int wOneColumns           = nodesInFirstHiddenLayer;
     Leave this.
     
-    (4) Now compile and run the programme. Do this until you're happy with the cost/percentage error. 
+   (4) Now compile and run the programme. Do this until you're happy with the cost/percentage error. 
     
-    (5) Now we want to use our W1 and W2 we calculated on fresh data. Again in the text files "InputVariables.txt" and "OutputVaribles.txt" copy your input data and your output data into these, space deliminated.
+   (5) Now we want to use our W1 and W2 we calculated on fresh data. Again in the text files "InputVariables.txt" and "OutputVaribles.txt" copy your input data and your output data into these, space deliminated.
     
-    (6) Set the following 
+   (6) Set the following 
     
-    bool batchOnline = false;
-    bool offline     = false;
-    bool test        = true;
+        bool batchOnline = false;
+        bool offline     = false;
+        bool test        = true;
     
     (7) Scroll down to this
-     // Testing setup
-    int xRows                 = 13853;
-    Set this to the number of examples you have of fresh data.
-    
+        ```
+        // Testing setup
+        int xRows                 = 13853;
+        Set this to the number of examples you have of fresh data.
+        ```
     (8) Compile and run the programme. 
     
     (9) In the programmes products directory there will now be a file named "ybar.txt" this file will contain the estimates for your output values. You can now compare this to the actual outputvalues. 
