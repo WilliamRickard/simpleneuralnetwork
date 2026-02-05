@@ -17,6 +17,7 @@ void setmatrixrandom(vector< vector<double> > &c, int r);
 void setmatrixrandompos(vector< vector<double> > &c, int r);
 void sigmoid(vector< vector<double> > &c);
 void sigmoidprime(vector< vector<double> > &c);
+void sigmoidAndPrime(vector< vector<double> > &z, vector< vector<double> > &a, vector< vector<double> > &aprime);
 void matrixTranspose(vector< vector<double> > &b, vector< vector<double> > &c);
 void textFileToMatrix(vector< vector<double> > &c, string q);
 void MatrixtoTextFile(vector< vector<double> > &c, string q);
@@ -36,7 +37,7 @@ void batchOnlineRun(int &n,int &s,int it,int &exSize,int &descents,double &tar,i
 void offlineRun(int &n,int &dc,int &s,double &tar,int &rWone,int &rWtwo,bool &rw);
 
 int main() {
-    srand(NULL);
+    srand(static_cast<unsigned int>(time(nullptr)));
     
     //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     
@@ -102,15 +103,16 @@ void matrixmultiply( vector< vector<double> > &c, vector< vector<double> > &a , 
     unsigned long int m = a.size() ; unsigned long int n = a[0].size(); unsigned long int p = b.size() ; unsigned long int q = b[0].size();
     
     if ( n == p) {
-        double sum = 0;
-        for(int i=0;i<m;i++){
-            for(int j=0;j<q;j++){
-                for(int t=0;t<n;t++){
-                    double pt = (  a[i][t]  )   *   (  b[t][j]  ) ;
-                    sum = pt + sum;
+        for(unsigned long int i=0;i<m;i++){
+            for(unsigned long int j=0;j<q;j++){
+                c[i][j] = 0;
+            }
+            for(unsigned long int t=0;t<n;t++){
+                const double a_it = a[i][t];
+                const vector<double> &b_row = b[t];
+                for(unsigned long int j=0;j<q;j++){
+                    c[i][j] += a_it * b_row[j];
                 }
-                c[i][j] = sum;
-                sum = 0;
             }
         }
     }
@@ -225,6 +227,16 @@ void sigmoidprime(vector< vector<double> > &c){
         }
     }
 }
+void sigmoidAndPrime(vector< vector<double> > &z, vector< vector<double> > &a, vector< vector<double> > &aprime){
+    unsigned long int m = z.size() ; unsigned long int n = z[0].size();
+    for(unsigned long int i=0;i<m;i++){
+        for(unsigned long int j=0;j<n;j++){
+            const double sig = (double) 1 / ( 1 + exp( ( -1.00 )  *  ( z[i][j] ) ) );
+            a[i][j] = sig;
+            aprime[i][j] = sig * (1.00 - sig);
+        }
+    }
+}
 void matrixTranspose(vector< vector<double> > &b,vector< vector<double> > &c){
     unsigned long int m = b.size() ; unsigned long int n = b[0].size();
     for(int i=0;i<m;i++){
@@ -237,9 +249,16 @@ void textFileToMatrix(vector< vector<double> > &c, string q){
     unsigned long int m = c.size() ; unsigned long int n = c[0].size();
     ifstream myfile;
         myfile.open(q);
+        if(!myfile.is_open()){
+            cout << "FAILED TO OPEN FILE: " << q << endl;
+            return;
+        }
             for(int i=0;i<m;i++)
                 for(int j=0;j<n;j++) {
-                    myfile >> c[i][j] ;
+                    if(!(myfile >> c[i][j])){
+                        cout << "INSUFFICIENT OR INVALID DATA IN FILE: " << q << endl;
+                        return;
+                    }
         }
     myfile.close();
 }
@@ -319,8 +338,8 @@ void hadamardproduct(vector< vector<double> > &c,vector< vector<double> > &a,vec
 void columnadd(vector< vector<double> > &c,vector< vector<double> > &a){
     unsigned long int m = a.size() ; unsigned long int n = a[0].size();
     double sum;
-    double rollsum = 0;
     for(int j=0;j<n;j++){
+        double rollsum = 0;
         for(int i=0;i<m;i++){
             sum = a[i][j];
             rollsum = rollsum + sum;
@@ -450,7 +469,7 @@ void batchOnlineRun(int &n,int &s,int it,int &exSize,int &descents,double &tar,i
     int    count           = 0;
     double cost            = 100000;
     double percentageError = 100;
-    double dev;
+    double dev = 0;
     double maxdiff;
     
     textFileToMatrix(x_o,"InputVariables.txt");
@@ -491,20 +510,11 @@ void batchOnlineRun(int &n,int &s,int it,int &exSize,int &descents,double &tar,i
         while( percentageError > tar ){
             
             matrixmultiply(z_two,x,w_one);
-            a_two = z_two;
-            sigmoid(a_two);
-            
-            z_twoprime = z_two;
-            sigmoidprime(z_twoprime);
+            sigmoidAndPrime(z_two,a_two,z_twoprime);
             
             matrixTranspose(a_twoTranspose,a_two) ;
             matrixmultiply(z_three,a_two,w_two);
-            
-            y_bar = z_three;
-            sigmoid(y_bar);
-            
-            z_threeprime = z_three;
-            sigmoidprime(z_threeprime);
+            sigmoidAndPrime(z_three,y_bar,z_threeprime);
             
             costfunc(cost,y_bar,y);
             perError(exSize,percentageError,y,y_bar);
@@ -579,7 +589,7 @@ void offlineRun(int &n,int &dc,int &s,double &tar,int &rWone,int &rWtwo,bool &rw
     vector< vector<double> > djdw_one(n,vector<double>(s));
     vector< vector<double> > w_two(s,vector<double>(1));
     vector< vector<double> > djdw_two(s,vector<double>(1));
-    vector< vector<double> > w_twoTranspose(s,vector<double>(1));
+    vector< vector<double> > w_twoTranspose(1,vector<double>(s));
     vector< vector<double> > z_two(dc,vector<double>(s));
     vector< vector<double> > z_twoprime(dc,vector<double>(s));
     vector< vector<double> > a_two(dc,vector<double>(s));
@@ -612,20 +622,11 @@ void offlineRun(int &n,int &dc,int &s,double &tar,int &rWone,int &rWtwo,bool &rw
     while( percentageError > tar ){
             
             matrixmultiply(z_two,x,w_one);
-            a_two = z_two;
-            sigmoid(a_two);
-            
-            z_twoprime = z_two;
-            sigmoidprime(z_twoprime);
+            sigmoidAndPrime(z_two,a_two,z_twoprime);
             
             matrixTranspose(a_twoTranspose,a_two) ;
             matrixmultiply(z_three,a_two,w_two);
-            
-            y_bar = z_three;
-            sigmoid(y_bar);
-            
-            z_threeprime = z_three;
-            sigmoidprime(z_threeprime);
+            sigmoidAndPrime(z_three,y_bar,z_threeprime);
             
             costfunc(cost,y_bar,y);
             perError(dc,percentageError,y,y_bar);
