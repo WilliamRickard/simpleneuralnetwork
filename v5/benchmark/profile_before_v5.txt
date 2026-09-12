@@ -1,0 +1,14 @@
+V4 profile that motivated V5
+============================
+
+Workload: 1,000,000 rows, 40 updates, four threads, accelerated v4 path.
+Approximate CPU-time breakdown:
+
+W1/W2 backpropagation and gradient accumulation   41.7%
+Hidden-layer forward multiply                     22.8%
+Hidden sigmoid / vector exp                       13.0%
+OpenMP runtime and synchronisation                12.2%
+Error / percentage diagnostics                     4.6%
+Output dot product and output sigmoid               3.5%
+
+The main conclusion was that roughly two thirds of v4 CPU time had moved into ordinary multiply-add work after v4 vectorised sigmoid evaluation. V5 therefore targets the fixed 11 x 16 arithmetic directly rather than changing the sigmoid again.
