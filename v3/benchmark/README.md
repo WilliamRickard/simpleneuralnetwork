@@ -32,6 +32,18 @@ v3 single-thread:   1.525 s   1.18x faster
 v3 four-thread:     0.773 s   2.33x faster than v2
 ```
 
+### Progress from v1
+
+The earlier paired v1-versus-v2 benchmark under `v2/benchmark/` recorded a 1,000,000-row v1 median of 4.975 s. Compared with that original baseline:
+
+```text
+v1 baseline:        4.975 s
+v3 single-thread:   1.525 s   3.26x faster than v1
+v3 four-thread:     0.773 s   6.44x faster than v1
+```
+
+Across all four workloads, v3 single-thread is about 2.10x to 3.26x faster than the original v1 baseline, while the four-thread path is about 4.88x to 6.92x faster. These cumulative comparisons combine the original v1 baseline round with the later v3 measurements, so the paired v2-versus-v3 figures remain the stricter like-for-like comparison.
+
 Peak resident memory for a one-update 1,000,000-row process was:
 
 ```text
