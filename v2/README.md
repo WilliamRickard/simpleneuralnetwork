@@ -33,9 +33,10 @@ The text-file formats are retained:
 v2/
     main.cpp
     README.md
+    benchmark/
 ```
 
-`main.cpp` contains the complete program: configuration, contiguous matrix storage, file I/O, forward propagation, diagnostics, backpropagation, momentum updates and the run modes.
+`main.cpp` contains the complete program: configuration, contiguous matrix storage, file I/O, forward propagation, diagnostics, backpropagation, momentum updates and the run modes. The `benchmark/` directory contains the separate performance test harness and synthetic-data tooling so the main implementation remains a single readable source file.
 
 ## Main performance changes
 
@@ -85,3 +86,11 @@ The small public `InputVariables.txt` and `OutputVariables.txt` files are toy re
 ## Reading v1 and v2 together
 
 V1 expresses backpropagation as a sequence of general matrix helper functions. V2 expresses the same equations directly in loops specialised to this network. Keeping both versions as single files makes that before-and-after comparison straightforward.
+
+## Benchmarks
+
+A reproducible V1-vs-V2 benchmark suite is included under `v2/benchmark/`. It contains the controlled V1 and V2 training kernels, raw timings, processed results and the deterministic synthetic-data generator.
+
+The measured speed-up increased with dataset size: V2 was 1.95x faster at 13,853 rows, 2.22x faster at 100,000 rows, and about 2.72x faster at 500,000 to 1,000,000 rows. At one million rows, peak memory fell from about 1.25 GiB to 223 MiB.
+
+See [`benchmark/README.md`](benchmark/README.md) for the full methodology, results and reproduction commands.
