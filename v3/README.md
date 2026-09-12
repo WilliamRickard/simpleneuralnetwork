@@ -57,6 +57,17 @@ The benchmark uses the same deterministic synthetic 11-input data and starting w
 | 500,000 | 20 | 1.766 s | 1.515 s | 1.17x | 0.854 s | 2.07x |
 | 1,000,000 | 10 | 1.804 s | 1.525 s | 1.18x | 0.773 s | 2.33x |
 
+### Progress from v1
+
+The original v1 timings below come from the paired v1-versus-v2 baseline stored under `v2/benchmark/`. They were collected in an earlier benchmark round, so these cumulative ratios are intended to track overall progress rather than replace the paired v2-versus-v3 comparison above.
+
+| Rows | Updates | v1 baseline | v3 single-thread | Speed-up vs v1 | v3 4-thread | Speed-up vs v1 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 13,853 | 500 | 2.289 s | 1.091 s | 2.10x | 0.331 s | 6.92x |
+| 100,000 | 100 | 3.737 s | 1.490 s | 2.51x | 0.765 s | 4.88x |
+| 500,000 | 20 | 4.838 s | 1.515 s | 3.19x | 0.854 s | 5.67x |
+| 1,000,000 | 10 | 4.975 s | 1.525 s | 3.26x | 0.773 s | 6.44x |
+
 On the 1,000,000-row case, peak resident memory fell from about 223 MiB for v2 to about 93 MiB for v3, a further reduction of roughly 58%.
 
 The serial v3 benchmark produced the same final weight checksum as v2 in every measured case. The four-thread version also produced the same reported checksum. Its different floating-point reduction order changes aggregate diagnostics only at round-off level, with the largest observed cost difference about `1.4e-10`.
