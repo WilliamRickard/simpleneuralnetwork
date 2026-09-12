@@ -49,6 +49,19 @@ The benchmark harness uses the same runtime-dispatched AVX-512 / AVX2 vector-exp
 
 The exact processed values are in `benchmark_summary.csv`.
 
+### Cumulative progress from v1
+
+For long-term progress tracking, the original paired v1/v2 baseline from `v2/benchmark/` can be combined with the later v3 and v4 measurements:
+
+| Rows | v1 baseline | v2 baseline | v3 single | v4 single | v4 single vs v1 | v4 4-thread | v4 4-thread vs v1 |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 13,853 | 2.289 s | 1.172 s | 1.091 s | 0.581 s | 3.94x | 0.260 s | 8.81x |
+| 100,000 | 3.737 s | 1.682 s | 1.490 s | 0.876 s | 4.27x | 0.312 s | 11.96x |
+| 500,000 | 4.838 s | 1.782 s | 1.515 s | 0.902 s | 5.36x | 0.360 s | 13.42x |
+| 1,000,000 | 4.975 s | 1.830 s | 1.525 s | 0.862 s | 5.77x | 0.345 s | 14.41x |
+
+These cumulative ratios are for tracking the evolution of the implementation. Because the v1/v2 baseline was measured in an earlier benchmark round, the direct v3-versus-v4 table above remains the preferred like-for-like comparison for assessing the v4 changes themselves.
+
 ## Memory
 
 The one-million-row v4 case used about 93 MiB peak RSS in both single-thread and four-thread runs, effectively unchanged from v3. The 64-row scratch block is small enough that the vectorisation gain does not materially increase working memory.
