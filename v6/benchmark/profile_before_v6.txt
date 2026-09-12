@@ -1,0 +1,17 @@
+V5 stage-level hotspot profile used to plan v6
+
+Workload: 1,000,000 rows, 20 full-batch updates
+Kernel: runtime-selected AVX-512/FMA arithmetic + libmvec vector sigmoid
+Method: sampled block-stage cycle timing at low frequency to limit profiler perturbation
+
+Approximate CPU-stage shares:
+                              1 thread   4 threads
+Hidden sigmoid / vector exp      36.4%       35.5%
+Hidden forward multiply          24.4%       23.0%
+W1 gradient accumulation         19.2%       21.4%
+Error metrics + deltaThree        9.0%        8.4%
+W2 gradient + deltaTwo            5.3%        6.0%
+Output dot product                3.0%        3.0%
+Output sigmoid                    2.7%        2.6%
+
+Interpretation: vector exp remained the single largest stage, but the exact-model changes available without a new math backend were block-size retuning, reducing backward scratch traffic, and avoiding unnecessary diagnostic accumulation.

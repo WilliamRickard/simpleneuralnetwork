@@ -1,0 +1,13 @@
+Production-path numerical equivalence check
+
+Dataset: deterministic 100,000-row text dataset
+Training: one update from identical starting weights
+Compared paths: v5 production, v6 production (AVX-512 selected), v6 with AVX2 arithmetic path forced
+
+All three produced byte-identical stored outputs:
+
+wone.txt  b69ebe75618cac2fbc65c4ada349492fafe8894fe485018db4f7a8ad6a2b386d
+wtwo.txt  cf925865fb69e2dd2dead82e0b38309162cd8b178e5262e6da66bf853dc5850f
+ybar.txt  af983f2ca38bd36e2886c3834707e12d77226d70f8d525713f1020f3e76f70f7
+
+The paired benchmark also produced the same final printed weight checksum for v5 and v6 in every workload/thread combination.
