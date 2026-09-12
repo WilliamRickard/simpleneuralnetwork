@@ -1,0 +1,6 @@
+1,000,000 rows, 1 update, measured with /usr/bin/time -v
+v4 single-thread maximum resident set size: 95488 KiB
+v4 four-thread maximum resident set size: 95744 KiB
+
+For comparison, the committed v3 benchmark recorded approximately 95488 KiB.
+The blocked/vectorised v4 kernel therefore improves throughput without materially increasing peak memory.
