@@ -1,0 +1,6 @@
+1,000,000 rows, 1 update, 4 threads, measured with /usr/bin/time -v
+v4 maximum resident set size: 95,616 KiB
+v5 maximum resident set size: 95,744 KiB
+Difference:                    +128 KiB (~0.13%)
+
+The v5 register-resident arithmetic kernels therefore leave peak memory effectively unchanged from v4.
