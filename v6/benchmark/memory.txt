@@ -1,0 +1,10 @@
+Peak resident memory comparison
+
+Workload: 1,000,000 rows, 10 updates, 4 OpenMP threads
+Measured with /usr/bin/time -v
+
+v5: 95,488 KiB
+v6: 95,760 KiB
+
+Difference: +272 KiB (+0.28%), effectively unchanged.
+The rejected target-reciprocal prototype used about 103 MiB and was not retained.
