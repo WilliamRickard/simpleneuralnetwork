@@ -45,6 +45,19 @@ The benchmark uses the same deterministic synthetic workloads as v3.
 | 500,000 | 20 | 1.515 s | 0.902 s | 1.68x | 0.854 s | 0.360 s | 2.37x |
 | 1,000,000 | 10 | 1.525 s | 0.862 s | 1.77x | 0.773 s | 0.345 s | 2.24x |
 
+### Progress across versions
+
+The v1 and v2 values below are the original paired baseline medians stored under `v2/benchmark/`. V3 and v4 were measured in later benchmark rounds using the same workload sizes and model. This table is intended to show cumulative progress through the versions, while the table above remains the stricter paired v3-versus-v4 comparison.
+
+| Rows | Updates | v1 baseline | v2 baseline | v3 single | v4 single | v4 single vs v1 | v4 4-thread | v4 4-thread vs v1 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 13,853 | 500 | 2.289 s | 1.172 s | 1.091 s | 0.581 s | 3.94x | 0.260 s | 8.81x |
+| 100,000 | 100 | 3.737 s | 1.682 s | 1.490 s | 0.876 s | 4.27x | 0.312 s | 11.96x |
+| 500,000 | 20 | 4.838 s | 1.782 s | 1.515 s | 0.902 s | 5.36x | 0.360 s | 13.42x |
+| 1,000,000 | 10 | 4.975 s | 1.830 s | 1.525 s | 0.862 s | 5.77x | 0.345 s | 14.41x |
+
+V2 originally delivered about a 1.95x to 2.72x speed-up over v1. By v4, the single-thread path is about 3.94x to 5.77x faster than v1 across these workloads, while the four-thread path reaches about 8.81x to 14.41x.
+
 Peak RSS for the one-million-row case remained about 93 MiB, essentially unchanged from v3.
 
 ## Numerical validation
