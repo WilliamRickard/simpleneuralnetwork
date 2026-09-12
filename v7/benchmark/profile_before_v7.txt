@@ -1,0 +1,22 @@
+V6 stage profile used to choose the v7 work
+============================================
+
+Environment: Intel Xeon Platinum 8573C, 5 exposed physical cores
+Workload: 1,000,000 rows, 20 updates
+Method: sampled stage timing inside the AVX-512 training block
+
+Approximate median share of sampled block time:
+
+Stage                                  1 thread    4 threads
+Hidden sigmoid / vector exp              29.1%        38.4%
+11 x 16 hidden forward multiply          30.3%        18.5%
+Fused backprop + W1/W2 gradients         15.0%        17.9%
+Percentage-error + deltaThree            10.4%         9.0%
+Output sigmoid                            7.2%         6.9%
+Output dot product                        6.7%         6.4%
+
+Interpretation:
+- v6 successfully reduced the backprop/W1-gradient bottleneck.
+- hidden sigmoid remained the largest multicore hotspot.
+- the forward multiply became the largest single-thread arithmetic hotspot.
+- the metric/deltaThree loop remained large enough to justify vectorisation.

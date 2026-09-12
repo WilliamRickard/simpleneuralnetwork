@@ -1,0 +1,20 @@
+Production-path numerical validation
+====================================
+
+Workload: 100,000 rows, one full-batch weight update
+Input data and starting wone/wtwo files were identical.
+Build: g++ -std=c++11 -O3 -fopenmp -DSIMPLE_NN_USE_LIBMVEC ... -lm
+
+V6-kernel baseline versus v7 AVX-512 kernel:
+- wone.txt: byte-identical
+- wtwo.txt: byte-identical
+- ybar.txt: byte-identical
+
+SHA-256:
+wone.txt  b69ebe75618cac2fbc65c4ada349492fafe8894fe485018db4f7a8ad6a2b386d
+wtwo.txt  cf925865fb69e2dd2dead82e0b38309162cd8b178e5262e6da66bf853dc5850f
+ybar.txt  af983f2ca38bd36e2886c3834707e12d77226d70f8d525713f1020f3e76f70f7
+
+The v7 AVX2 path was then forced on the same AVX-512-capable machine and produced the same three hashes.
+
+The deterministic paired benchmark also ended on exactly the same printed final-weight checksum for v6 and v7 in every workload and thread configuration.
