@@ -1,0 +1,19 @@
+Pre-v8 stage profile of the merged v7 AVX-512 training kernel
+Environment: Intel Xeon Platinum 8573C, 5 exposed physical cores, GCC 14.2.0
+Workload: 1,000,000 rows, 20 updates
+Method: RDTSCP stage sampling, one sample every 256 16-row tiles, median of 7 runs
+CPU affinity: one thread pinned to CPU 0; four threads pinned to CPUs 0-3 with OMP_PROC_BIND=close and OMP_PLACES=cores
+
+Median sampled CPU share
+stage,1_thread_pct,4_thread_pct
+hidden_sigmoid,36.973,43.733
+forward_11x16,20.353,15.337
+backprop_and_gradients,18.652,19.906
+metric_and_delta3,8.802,7.069
+output_sigmoid,8.242,5.622
+output_dot,6.533,6.285
+
+Interpretation:
+- hidden + output sigmoid account for about 45.2% of sampled single-thread cycles and 49.4% of sampled four-thread cycles
+- the four-row v7 forward microkernel reduced the forward stage enough that vector transcendental math is now the largest remaining hotspot
+- v8 therefore focuses on dispatch/overhead removal and avoiding percentage divisions that cannot affect the stopping decision, without changing sigmoid accuracy or the network equations
