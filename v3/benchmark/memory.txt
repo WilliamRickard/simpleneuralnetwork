@@ -1,0 +1,4 @@
+1,000,000 rows, 1 update, measured with /usr/bin/time -v
+v2 maximum resident set size: 228224 KiB
+v3 maximum resident set size:  95488 KiB
+v3 reduction versus v2:       58.2%
