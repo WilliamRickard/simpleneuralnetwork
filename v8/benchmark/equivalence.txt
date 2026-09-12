@@ -1,0 +1,29 @@
+V7 -> V8 numerical validation
+
+Production-path test:
+- 100,000 rows
+- one actual training update
+- same text InputVariables.txt / OutputVariables.txt
+- same starting wone.txt / wtwo.txt
+- accelerated OpenMP + glibc libmvec build
+- tested separately with 1 thread and 4 threads
+
+For both thread configurations, v7 and v8 produced byte-identical files:
+
+wone.txt SHA-256
+  eb8422b7993b202b851c37676da5b298964223e8141efdccaa93af1d539297f4
+
+wtwo.txt SHA-256
+  becece3271bbdb7defb5299371cf7af523e02263c95eef29e39d9967c9496a92
+
+ybar.txt SHA-256
+  df17dba3cadf1f244d992a0b22b814ef997aaf90b66df8ea1cbb0e4b293770de
+
+The deterministic paired benchmark also ended with zero printed checksum difference between v7 and v8 in every workload/thread configuration.
+
+Why the percentage-error cutoff is exact for training decisions:
+- each per-row percentage error is non-negative
+- if the accumulated sum already exceeds percentageErrorTarget * rowCount, the final mean cannot fall back below the target
+- v8 may therefore skip later percentage divisions on a lightweight pass while continuing to calculate every forward value, delta and gradient exactly
+- detailed/logging passes never use the cutoff
+- if the target is actually reached, the threshold was never crossed, so the reported percentage error remains the full exact sum
