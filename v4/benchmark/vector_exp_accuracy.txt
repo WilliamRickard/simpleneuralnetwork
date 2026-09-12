@@ -1,0 +1,9 @@
+glibc libmvec AVX-512 exp() accuracy check
+800,000 random double inputs uniformly sampled over [-50, 50]
+Compared _ZGVeN8v_exp against scalar std::exp
+maximum relative difference: 4.4243641505627709e-16
+maximum ULP difference: 3
+
+Neural-network validation:
+100-row production-path run, one weight update
+v3 and accelerated v4 produced byte-identical wone.txt, wtwo.txt and ybar.txt.
