@@ -1,0 +1,15 @@
+Production-path equivalence check
+=================================
+
+Dataset: deterministic 100,000-row text dataset used by the repository benchmarks.
+Configuration: 11 -> 16 -> 1, identical starting weights, one full-batch update, one thread.
+Build: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -fopenmp -DSIMPLE_NN_USE_LIBMVEC ... -lm
+
+V4 and V5 produced byte-identical output files at stored precision:
+
+wone.txt  b69ebe75618cac2fbc65c4ada349492fafe8894fe485018db4f7a8ad6a2b386d
+wtwo.txt  cf925865fb69e2dd2dead82e0b38309162cd8b178e5262e6da66bf853dc5850f
+ybar.txt  af983f2ca38bd36e2886c3834707e12d77226d70f8d525713f1020f3e76f70f7
+
+The AVX2 arithmetic path was also forced on the AVX-512-capable benchmark machine and produced the same three hashes.
+The controlled benchmark ended on the same printed weight checksum for v4 and v5 in every measured workload.
