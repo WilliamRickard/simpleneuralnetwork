@@ -1,0 +1,7 @@
+Peak resident memory, 1,000,000 rows, 1 update, 4 threads
+Benchmark environment: Intel Xeon Platinum 8573C, 5 exposed cores
+
+v6 maximum RSS: 95,616 KiB
+v7 maximum RSS: 95,616 KiB
+
+Difference: 0 KiB in this measurement.
