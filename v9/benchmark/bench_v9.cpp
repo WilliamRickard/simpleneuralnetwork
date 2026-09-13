@@ -2,6 +2,18 @@
 #include "../../v8/benchmark/bench_v8.cpp"
 #undef main
 
+using V9BaselineSigvecKernel = void (*)(double *, size_t);
+static V9BaselineSigvecKernel selectV9BaselineSigvecKernel(){
+ if(__builtin_cpu_supports("avx512f")) return sigAVX512;
+ if(__builtin_cpu_supports("avx2")) return sigAVX2;
+ return nullptr;
+}
+static inline void sigvec_cached(double*a,size_t n){
+ static const V9BaselineSigvecKernel kernel=selectV9BaselineSigvecKernel();
+ if(kernel){kernel(a,n);return;}
+ for(size_t i=0;i<n;i++)a[i]=sigmoid(a[i]);
+}
+
 __attribute__((target("avx512f"))) static inline void sigAVX512_unchecked(double*a,size_t n){const __m512d one=_mm512_set1_pd(1),zero=_mm512_setzero_pd();for(size_t i=0;i<n;i+=8){__m512d x=_mm512_loadu_pd(a+i);__m512d e=_ZGVeN8v_exp(_mm512_sub_pd(zero,x));_mm512_storeu_pd(a+i,_mm512_div_pd(one,_mm512_add_pd(one,e)));}}
 
 
