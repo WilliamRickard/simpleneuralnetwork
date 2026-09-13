@@ -1,19 +1,23 @@
-Pre-v8 stage profile of the merged v7 AVX-512 training kernel
-Environment: Intel Xeon Platinum 8573C, 5 exposed physical cores, GCC 14.2.0
-Workload: 1,000,000 rows, 20 updates
-Method: RDTSCP stage sampling, one sample every 256 16-row tiles, median of 7 runs
-CPU affinity: one thread pinned to CPU 0; four threads pinned to CPUs 0-3 with OMP_PROC_BIND=close and OMP_PLACES=cores
+V9 profiling basis and generated-code inspection
+Environment: Intel Xeon Platinum 8573C, GCC 14.2.0, Linux x86-64, glibc libmvec
 
-Median sampled CPU share
-stage,1_thread_pct,4_thread_pct
-hidden_sigmoid,36.973,43.733
-forward_11x16,20.353,15.337
-backprop_and_gradients,18.652,19.906
-metric_and_delta3,8.802,7.069
-output_sigmoid,8.242,5.622
-output_dot,6.533,6.285
+Measured hotspot basis
+- The committed v8 precursor profile showed hidden + output sigmoid at about 45.2% of sampled single-thread cycles and 49.4% of sampled four-thread cycles.
+- Forward 11x16 multiplication accounted for about 20.4% of sampled single-thread cycles.
+- Backpropagation and gradient accumulation accounted for about 18.7% of sampled single-thread cycles.
 
-Interpretation:
-- hidden + output sigmoid account for about 45.2% of sampled single-thread cycles and 49.4% of sampled four-thread cycles
-- the four-row v7 forward microkernel reduced the forward stage enough that vector transcendental math is now the largest remaining hotspot
-- v8 therefore focuses on dispatch/overhead removal and avoiding percentage divisions that cannot affect the stopping decision, without changing sigmoid accuracy or the network equations
+Source-level findings
+- The v8 AVX-512 tile carries 22 W1 gradient vectors and 2 W2 gradient vectors.
+- Loading and storing those 24 vectors once per 16-row tile moves 3,072 bytes of accumulator state per tile.
+- At 1,000,000 rows there are 62,500 complete tiles, equivalent to 192,000,000 bytes, or about 183.1 MiB, of accumulator load/store traffic per update.
+
+Generated-code finding
+- Assembly inspection of the benchmark binary found 104 ZMM instructions referencing stack locations.
+- This indicates the existing kernel already operates under meaningful AVX-512 register pressure.
+- A proposed cross-tile carry of the 24-vector gradient state was therefore rejected before implementation because extending vector lifetimes was likely to increase spilling.
+
+V9 optimisation target
+- Keep the arithmetic and libmvec exponential unchanged.
+- Reduce overhead around the dominant sigmoid stage using a fixed full-tile path.
+- Omit the per-vector -700 exceptional check only when a conservative pass-level bound proves it unreachable.
+- Preserve v8 fallbacks when the proof or workload dispatch condition is not met.
