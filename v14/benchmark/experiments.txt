@@ -1,0 +1,24 @@
+V14 optimiser experiments
+
+Retained: full-batch L-BFGS
+- Parameter count: 192.
+- History: 10 curvature pairs.
+- Line search: Armijo backtracking, c1=1e-4, initial step 1.0.
+- Exact FP64 objective/gradient evaluation.
+- Deterministic 100k, 500k and 1m benchmark cells all reached the 3.9% target on evaluation 3.
+
+Control: historical full-batch momentum
+- Mean-gradient learning rate: 1e-4.
+- Momentum: 0.75.
+- On the 20k deterministic screen, percentage error remained about 14.85% after 6,000 complete dataset passes.
+- Rejected for v14 because time-to-target is orders of magnitude worse on this problem.
+
+Control: deterministic mini-batch momentum
+- Best screened configuration: batch size 256, mean-gradient learning rate 0.003, momentum 0.75.
+- Reached about 3.75% after 10 dataset-equivalent passes on the 20k screen.
+- This is materially better than historical full-batch momentum but still behind L-BFGS's three full evaluations.
+
+Not retained yet
+- Approximate FP32/BF16 gradients inside L-BFGS. Potentially useful, but changing both optimiser and gradient precision in the same release would make attribution harder.
+- Parallel exact gradient evaluation. This should improve v14 wall-clock time without changing the optimiser and is a good follow-on experiment.
+- Strong-Wolfe line search. Armijo already reaches the target in three evaluations on all release cells, so a more complex line search has no demonstrated benefit yet.
