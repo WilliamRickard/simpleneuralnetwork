@@ -1,0 +1,31 @@
+V15 experiment log
+
+Retained: parallel exact FP64 L-BFGS evaluation
+- Same v14 L-BFGS optimiser and target.
+- Objective/gradient work partitioned across deterministic contiguous row ranges.
+- FP64 gradients per worker, long-double metric accumulators.
+- Fixed-order reduction after each evaluation.
+- Cap at four evaluator workers.
+
+Thread-count screen, 500,000 rows
+- 1 thread: median ~0.372 s
+- 2 threads: median ~0.197 s
+- 4 threads: median ~0.182 s
+- 5 threads: median ~0.187 s
+Decision: retain four workers on this five-core host.
+
+Rejected: FP32 proposal gradient + FP64 Armijo acceptance
+- Proposal directions were computed from FP32 gradients.
+- Every candidate still required an exact FP64 objective/gradient evaluation for Armijo acceptance and stopping.
+- All screened cases still reached target in three exact evaluations.
+- The extra proposal evaluations therefore duplicated work.
+- At 1m rows, 4 threads:
+  exact-only median ~0.357 s
+  hybrid proposal median ~0.711 s
+Decision: reject.
+
+Release benchmark
+- Seven alternating paired runs per size.
+- Baseline: same exact L-BFGS evaluator, one worker.
+- Candidate: same evaluator and optimiser, four workers.
+- Both reached target on evaluation 3 in every retained run.
