@@ -1,92 +1,82 @@
-# Simple Neural Network v8
+# Simple Neural Network v9
 
-V8 keeps the same 11 -> 16 -> 1 sigmoid network, double-precision weights and training equations as v7. It is a conservative exact-model optimisation round: changes are enabled only on workload shapes where paired benchmarking showed a useful result.
+V9 keeps the same 11 -> 16 -> 1 sigmoid network, double-precision weights and training equations as v8. It is an exact-model optimisation round focused on the AVX-512/libmvec path. V9 deliberately reuses the frozen v8 implementation for fallbacks and layers the specialised training path on top of it.
 
-The complete implementation remains in one `main.cpp`.
+## What changed from v8
 
-## What changed from v7
+- Complete 16-row AVX-512 tiles use a dedicated full-tile kernel. The rare final partial tile continues through the v8 tile.
+- The v9 full-tile path calls the AVX-512 vector sigmoid directly instead of passing through the cached function-pointer wrapper.
+- Dataset loading records the maximum absolute value of each input feature.
+- Before each training pass, v9 computes a conservative long-double bound on every hidden pre-activation and on the minimum output pre-activation. When the bound proves every relevant value is strictly inside +/-699, v9 uses an unchecked libmvec sigmoid loop that omits the repeated per-vector `x < -700` guard. If the proof fails, the checked v8 sigmoid path is used automatically.
+- Single-thread batches of at least 50,000 rows use the v9 range driver on supported AVX-512/libmvec builds.
+- Parallel batches use the new range path only from 1,000,000 rows. Smaller parallel batches retain the v8 dispatch because they did not show a robust benefit.
+- Non-x86, non-GNU, non-libmvec and unsupported-CPU configurations delegate to v8.
 
-- Single-thread batches of at least 50,000 rows use a range-level AVX-512 driver rather than dispatching one external training-kernel call for every 16 rows.
-- The single-thread v8 tile no longer zero-initialises the 2 KiB hidden scratch array. The forward microkernel overwrites every used activation before it is read, so those stores were redundant.
-- The vector sigmoid backend is resolved once and cached on the v8 paths instead of repeating CPU-feature tests for every sigmoid call.
-- On lightweight single-thread passes, percentage-error divisions stop once the accumulated non-negative error is already above `percentageErrorTarget * rowCount`. At that point the stopping target is mathematically impossible for that pass. Forward propagation, backpropagation and every gradient calculation continue unchanged.
-- Detailed/logging passes always calculate the full cost, mean percentage error and maximum percentage error.
-- Batches below 50,000 rows deliberately retain the v7 path because the extra range machinery did not help the 13,853-row benchmark.
-- Parallel batches below 50,000 rows retain the v6 fallback, as in v7. Parallel batches from 50,000 to below 1,000,000 rows retain the v7 kernel. At 1,000,000 rows and above, v8 keeps the v7 arithmetic but caches vector-sigmoid dispatch.
-- AVX2/FMA and portable scalar fallbacks remain available.
+The unchecked sigmoid path changes no approximation or training equation. It calls the same glibc vector `exp` symbol used by v8 and removes only a branch whose condition has first been proven unreachable for that pass. A one-unit safety margin is kept between the proof bound and v8's `-700` fallback threshold.
 
-The percentage cutoff does **not** approximate the training rule. Percentage errors are non-negative, so once the partial sum exceeds the full-pass target sum, later rows cannot make the final mean fall back below the target. If the target can be reached, v8 never crosses the cutoff and therefore computes the full percentage sum.
+## Source layout
 
-Third-party vector-math backends were researched but not added because oneMKL, SLEEF and AOCL-LibM are not installed in this environment. The optional polynomial sigmoid experiment also remains outside the exact/default v8 path.
+`v9/main.cpp` includes `../v8/main.cpp` after renaming v8's top-level entry points, then defines the v9-specific training path. This keeps the already-validated v8 fallback frozen instead of duplicating it. Build from the repository root so the relative include resolves normally.
 
 ## Building
 
 Portable build:
 
 ```text
-g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic v8/main.cpp -o simple_nn_v8
+g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic v9/main.cpp -o simple_nn_v9
 ```
 
-OpenMP + glibc vector-exp build used for the paired benchmark:
+OpenMP + glibc vector-exp build used for benchmarking:
 
 ```text
 g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -fopenmp \
-    -DSIMPLE_NN_USE_LIBMVEC v8/main.cpp -lm -o simple_nn_v8
+    -DSIMPLE_NN_USE_LIBMVEC v9/main.cpp -lm -o simple_nn_v9
 ```
 
-Both builds compile cleanly with GCC 14.2.0 and the warning flags above.
+The v9-specific source was compile-checked in both modes with GCC 14.2.0. The performance harness was compiled and run on the same Intel Xeon Platinum 8573C environment used for v8.
 
-## Paired v7 versus v8 benchmark
+## Paired v8 versus v9 benchmark
 
-The benchmark was run on an Intel Xeon Platinum 8573C with five exposed physical cores. V7 and v8 used identical deterministic data, starting weights, update counts and compiler settings. Each cell is the median of nine repetitions and run order alternated between v7 and v8. One-thread runs were pinned to CPU 0. Four-thread runs were pinned to CPUs 0-3 with `OMP_PROC_BIND=close` and `OMP_PLACES=cores`.
+Each cell used deterministic data and starting weights. V8 and v9 were executed in the same process with alternating order for nine paired repetitions. One-thread runs were pinned to CPU 0. Four-thread runs were pinned to CPUs 0-3 with `OMP_PROC_BIND=close` and `OMP_PLACES=cores`.
 
-| Rows | Updates | v7 single | v8 single | Speed-up | v7 4-thread | v8 4-thread | Speed-up |
-|---:|---:|---:|---:|---:|---:|---:|---:|
-| 13,853 | 500 | 0.322 s | 0.338 s* | n/a* | 0.126 s | 0.136 s* | n/a* |
-| 100,000 | 100 | 0.367 s | 0.343 s | **1.07x** | 0.181 s | 0.181 s* | n/a* |
-| 500,000 | 20 | 0.356 s | 0.332 s | **1.07x** | 0.170 s | 0.170 s* | n/a* |
-| 1,000,000 | 10 | 0.369 s | 0.352 s | **1.05x** | 0.176 s | 0.169 s | **1.04x** |
+| Rows | Updates | Threads | Dispatch | v8 median | v9 median | Reduction |
+|---:|---:|---:|---|---:|---:|---:|
+| 13,853 | 500 | 1 | v8 fallback | 0.183 s | 0.185 s | n/a |
+| 100,000 | 100 | 1 | v9 guarded full tile | 0.243 s | 0.238 s | **1.7%** |
+| 500,000 | 20 | 1 | v9 guarded full tile | 0.245 s | 0.236 s | **3.5%** |
+| 1,000,000 | 10 | 1 | v9 guarded full tile | 0.244 s | 0.237 s | **2.9%** |
+| 13,853 | 500 | 4 | v8 fallback | 0.093 s | 0.092 s | n/a |
+| 100,000 | 100 | 4 | v8 fallback | 0.124 s | 0.124 s | n/a |
+| 500,000 | 20 | 4 | v8 fallback | 0.122 s | 0.125 s | n/a |
+| 1,000,000 | 10 | 4 | v9 guarded full tile | 0.124 s | 0.118 s | **4.9%** |
 
-`*` These configurations deliberately dispatch to the same training kernel in v7 and v8. Their measured timing differences are scheduler/run-order noise and are not claimed as v8 gains or regressions.
+Fallback rows intentionally use the v8 implementation. Timing differences there are scheduler/run-order noise and are not claimed as v9 gains or regressions.
 
-On the workloads that actually use the new single-thread range kernel, v8 reduced elapsed training time by about **5-7%** in this final paired sweep. The one-million-row four-thread cached-dispatch path was about **4% faster**.
-
-Peak resident memory for the 1,000,000-row, four-thread, one-update memory test was 95,488 KiB for v7 and 95,616 KiB for v8, effectively unchanged.
-
-## Pre-v8 profile
-
-The median sampled v7 CPU-time shares on 1,000,000 rows x 20 updates were:
-
-| Stage | 1 thread | 4 threads |
-|---|---:|---:|
-| Hidden sigmoid | 37.0% | 43.7% |
-| Forward 11 x 16 multiply | 20.4% | 15.3% |
-| Backprop + gradients | 18.7% | 19.9% |
-| Metric + `deltaThree` | 8.8% | 7.1% |
-| Output sigmoid | 8.2% | 5.6% |
-| Output dot product | 6.5% | 6.3% |
-
-Sigmoid therefore accounts for roughly 45-49% of sampled CPU cycles. V8 removes overhead around that work without changing the sigmoid implementation itself.
-
-## Progress across versions
-
-V1-v6 historical timings include an earlier AMD EPYC benchmark environment, while v7 and v8 were measured on the Xeon environment above. Absolute seconds should therefore not be appended directly into one long timing table.
-
-Using the same hardware-normalised method as the v7 README, multiply the previous normalised v7-vs-v1 ratio by the fresh paired v8-vs-v7 ratio only where v8 actually changes the kernel:
-
-| Rows | Normalised v7 vs v1 | Paired v8 vs v7 | Normalised v8 vs v1 |
-|---:|---:|---:|---:|
-| 13,853 | 9.52x | unchanged | **9.52x** |
-| 100,000 | 10.62x | 1.07x | **11.35x** |
-| 500,000 | 13.23x | 1.07x | **14.21x** |
-| 1,000,000 | 14.06x | 1.05x | **14.78x** |
-
-For four threads, the normalised progress is unchanged at about **29.35x**, **35.0x** and **50.1x** versus v1 for the 13,853, 100k and 500k workloads respectively. The one-million-row cached-dispatch path increases the previous normalised 45.2x figure to about **47.1x**. These are derived progress ratios, not direct v1-versus-v8 measurements.
+Peak resident memory for the 1,000,000-row, four-thread memory run was 95,616 KiB for v8 and 95,624 KiB for v9.
 
 ## Numerical validation
 
-A production-path 100,000-row one-update comparison was run separately with one thread and four threads. In both cases v7 and v8 produced byte-identical `wone.txt`, `wtwo.txt` and `ybar.txt` at stored precision.
+All 72 paired timing runs finished with an identical final scalar checksum. A separate full-state equivalence harness compared every byte of W1, W2 and both momentum arrays after the active v9 path. The 100,000-row one-thread case and 1,000,000-row four-thread case were both byte-identical to v8.
 
-The deterministic paired benchmark finished on the same final-weight checksum for v7 and v8 in every workload and thread configuration.
+The guarded path uses the same vector exponential operation as v8. The range proof only determines whether the existing `-700` exceptional branch can be omitted safely.
 
-Full processed results, raw timings, the pre-v8 hotspot profile, memory measurement and output hashes are under [`benchmark/`](benchmark/).
+## Progress across versions
+
+V1-v6 historical timings used an earlier AMD EPYC environment, while v7-v9 use the Xeon environment above. The table therefore extends the hardware-normalised ratios rather than mixing absolute seconds from different machines.
+
+| Rows | Normalised v8 vs v1 | Paired v9 vs v8 | Normalised v9 vs v1 |
+|---:|---:|---:|---:|
+| 13,853 | 9.52x | unchanged | **9.52x** |
+| 100,000 | 11.35x | 1.017x | **11.55x** |
+| 500,000 | 14.21x | 1.036x | **14.72x** |
+| 1,000,000 | 14.78x | 1.030x | **15.22x** |
+
+For four threads, the v9 dispatch is unchanged from v8 below 1,000,000 rows. The one-million-row normalised ratio rises from about 47.1x to **49.54x** versus v1. These are derived progress ratios, not direct v1-versus-v9 measurements.
+
+## Experiments rejected
+
+V9 testing also covered network alignment/aligned weight loads, direct sigmoid dispatch in isolation, explicit OpenMP block ownership in isolation and cross-tile gradient-register carry. Alignment and ownership were inconsistent or below the noise floor. Direct dispatch became useful only as part of the full-tile path. Cross-tile gradient carry was rejected after generated-code inspection showed the current kernel already has substantial ZMM stack spilling, so extending live vector state would increase register pressure.
+
+Third-party vector-math libraries were not benchmarked because oneMKL, SLEEF and AOCL-LibM were not installed in the test environment.
+
+Processed results, raw timings, equivalence evidence, memory measurements and experiment notes are under [`benchmark/`](benchmark/).
