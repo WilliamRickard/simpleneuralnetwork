@@ -1,48 +1,51 @@
 # V11 benchmark notes
 
-This directory records the v10-style versus v11 sigmoid-isolation benchmark, numerical-drift checks and rejected v11 experiments.
+This directory records the final v10-style versus v11 adaptive-sigmoid benchmark, numerical-drift checks and rejected v11 experiments.
 
 ## Environment
 
-- Intel Xeon Platinum 8573C
+- AMD EPYC 9V74
 - GCC 14.2.0
 - Linux x86-64
 - AVX-512
-- glibc libmvec for the exact baseline sigmoid
+- glibc libmvec for the exact baseline and v11 fallback
 - OpenMP for the four-thread case
 
-oneMKL and SLEEF were not installed in the benchmark environment, so v11 does not add either as an untested dependency. Current oneMKL provides vector exponential routines with multiple accuracy modes, but that comparison is left for a future dependency-enabled benchmark.
+The current execution host differs from the historical Xeon host used for v8-v10. Absolute seconds should therefore not be compared across version READMEs. Every v11 result is a paired same-host comparison against a v10-style exact-sigmoid baseline.
+
+## Final approximation
+
+For each eight-lane vector:
+
+- all lanes inside `[-1,1]`: degree-5 odd polynomial;
+- any lane outside `[-1,1]`: existing checked libmvec sigmoid for that vector.
+
+This keeps the common path short while retaining exact historical behaviour outside the approximation interval.
+
+Dense-grid maximum absolute error on `[-1,1]` is about `2.69e-6`.
 
 ## Release-development cells
 
-Five alternating paired repetitions were used for each cell:
+Alternating paired repetitions were used:
 
-- 100,000 rows x 300 updates, 1 thread
-- 500,000 rows x 60 updates, 1 thread
-- 1,000,000 rows x 30 updates, 1 thread
-- 1,000,000 rows x 100 updates, 4 threads
+- 100,000 rows x 100 updates, 1 thread, 7 pairs
+- 500,000 rows x 40 updates, 1 thread, 7 pairs
+- 1,000,000 rows x 30 updates, 1 thread, 7 pairs
+- 1,000,000 rows x 60 updates, 4 threads, 5 pairs
 
-One-thread runs use the v9-style four-row forward grouping. The four-thread million-row cell uses the v10 eight-row grouping. In each pair the only intended hot-kernel change is exact libmvec sigmoid versus the v11 adaptive polynomial sigmoid.
+One-thread runs use the four-row production-style forward grouping. The four-thread million-row cell uses the eight-row v10 grouping.
 
-`benchmark_summary.csv` contains medians and paired reductions. `raw_timings.csv` retains every timing pair and the maximum final-weight difference.
+`benchmark_summary.csv` contains medians and paired reductions. `raw_timings.csv` retains every timing pair, maximum final-weight difference and exact-sigmoid RMSE for both trained networks.
 
 ## Accuracy and long-run checks
 
 `accuracy.txt` records:
 
-- dense-grid sigmoid approximation error
-- observed preactivation ranges
-- exact-sigmoid RMSE and max prediction error after training
-- long-run 1,000-update and 300-update drift tests
-- exact target-confirmation semantics
+- dense-grid approximation error;
+- release-cell final-weight drift and exact-sigmoid RMSE drift;
+- 1,000-update single-thread and 300-update four-thread stability checks;
+- exact target-confirmation semantics.
 
 ## Benchmark source
 
-`bench_v11.cpp` is the exact local development harness used for the reported paired measurements. It is intentionally self-contained so the approximation and the v10-style baseline can be reproduced without altering historical version sources. It requires C++17 because its driver uses generic lambdas; production `v11/main.cpp` remains C++11.
-
-Example:
-
-```text
-g++ -std=c++17 -O3 -Wall -Wextra -Wpedantic -fopenmp bench_v11.cpp -lm -o bench_v11
-OMP_PROC_BIND=close OMP_PLACES=cores taskset -c 0-3 ./bench_v11 1000000 100 5 4
-```
+`bench_v11.cpp` is the self-contained development harness used to compare the production-style exact and adaptive sigmoid kernels. It does not modify historical version sources.
