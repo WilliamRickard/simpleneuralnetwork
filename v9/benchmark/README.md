@@ -1,6 +1,6 @@
-# V8 benchmark notes
+# V9 benchmark notes
 
-This directory records the controlled v7-versus-v8 benchmark and validation used for the v8 README.
+This directory records the controlled v8-versus-v9 benchmark and validation used for the v9 README.
 
 ## Environment
 
@@ -11,49 +11,49 @@ This directory records the controlled v7-versus-v8 benchmark and validation used
 - glibc `libmvec` vector math
 - no oneMKL, SLEEF or AOCL-LibM installed
 
-Accelerated build:
+Benchmark build:
 
 ```text
-g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -fopenmp \
-    bench_v8.cpp -lm -o bench_v8
+g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -fopenmp bench_v9.cpp -lm -o bench_v9
 ```
 
-The harness contains the committed v7 deterministic baseline and the final v8 dispatch shape. Each workload/thread cell was run nine times with alternating v7/v8 order. Single-thread runs were pinned with `taskset -c 0`; four-thread runs used `taskset -c 0-3`, `OMP_PROC_BIND=close` and `OMP_PLACES=cores`.
+One-thread runs were pinned with `taskset -c 0`. Four-thread runs used `taskset -c 0-3`, `OMP_PROC_BIND=close` and `OMP_PLACES=cores`. Each workload/thread cell contains nine paired repetitions. V8 and v9 run in the same process and the order alternates by repetition.
 
 ## Dispatch represented by the benchmark
 
-- single thread, <50,000 rows: unchanged v7 kernel
-- single thread, >=50,000 rows: v8 range driver with cached sigmoid dispatch, uninitialised overwritten scratch, and mathematically safe percentage-error cutoff
-- four threads, <50,000 rows: unchanged v6 fallback used by v7
-- four threads, 50,000 to <1,000,000 rows: unchanged v7 kernel
-- four threads, >=1,000,000 rows: v7 arithmetic with cached sigmoid dispatch
+- one thread, below 50,000 rows: frozen v8 fallback
+- one thread, at least 50,000 rows: v9 full-tile/range path with the conservative unchecked-sigmoid guard
+- four threads, below 1,000,000 rows: frozen v8 fallback
+- four threads, at least 1,000,000 rows: v9 contiguous range path with the same guarded full-tile kernel
 
-Rows marked as fallback in `benchmark_summary.csv` intentionally execute the same arithmetic/kernel as v7. Any measured difference in those rows is benchmark noise, not an algorithmic v8 change.
+The final summary is in `benchmark_summary.csv`. `raw_timings.csv` retains every paired run.
 
-## Files
+## Exactness validation
 
-- `bench_v8.cpp`: deterministic paired benchmark harness
-- `benchmark_summary.csv`: medians, standard deviations, dispatch path and checksum comparison
-- `raw_timings.csv`: all nine paired repetitions for every workload/thread configuration
-- `profile_before_v8.txt`: seven-run sampled v7 stage profile that motivated v8
-- `memory.txt`: one-million-row four-thread peak RSS comparison
-- `equivalence.txt`: production text-file one-update equivalence results and hashes
+The timing harness checks a deterministic final-weight checksum in every paired run. The maximum absolute checksum difference across the recorded cells is zero.
+
+`equivalence.txt` records the stronger independent check: complete W1, W2, deltaW1 and deltaW2 arrays are byte-identical for the 100,000-row one-thread path and 1,000,000-row four-thread path.
+
+## Memory
+
+`memory.txt` records the one-million-row, four-thread peak-RSS comparison. V8 used 95,616 KiB and v9 used 95,624 KiB.
 
 ## Experiments retained and rejected
 
 Retained:
 
-- remove hidden scratch zero-fill on the single-thread v8 path
-- cache vector-sigmoid backend selection
-- process the single-thread workload through one range driver
-- after the target becomes mathematically impossible on a lightweight pass, switch to a specialised no-percentage-division tile
-- cache sigmoid dispatch on very large parallel batches
+- full 16-row AVX-512 tile specialisation
+- direct AVX-512 sigmoid invocation inside the specialised tile
+- per-dataset feature maxima and a conservative per-pass pre-activation bound
+- unchecked libmvec sigmoid only when that bound proves the `-700` exceptional branch unreachable
+- v9 parallel range driver only from 1,000,000 rows
 
-Not retained:
+Rejected:
 
-- a branch inside every metric tile to decide whether to calculate percentage error: slower than separate specialised tile paths
-- applying the uninitialised-scratch/range dataflow to all OpenMP workloads: not consistently faster
-- forcing AVX2 sigmoid on the AVX-512 machine: slower in the profiling experiments
-- `tanh` sigmoid identity: slower with glibc vector math
-- `exp2(-x * log2(e))`: interesting single-thread results but not consistently better in parallel
-- approximate polynomial sigmoid: large experimental speed-up, but deliberately excluded from exact/default v8
+- 64-byte aligning `Network` and converting hot weight reads to aligned loads: inconsistent benefit
+- direct cached-dispatch removal by itself: below the noise floor
+- explicit OpenMP block ownership by itself: too small to retain
+- carrying the 24-vector W1/W2 gradient state across tiles: generated assembly already showed substantial ZMM spills, making additional live state unattractive
+- oneMKL/SLEEF/AOCL-LibM comparisons: libraries unavailable in the benchmark environment
+
+The source model and training equations are unchanged from v8.
