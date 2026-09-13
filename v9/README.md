@@ -37,26 +37,22 @@ The v9-specific source was compile-checked in both modes with GCC 14.2.0. The pe
 
 ## Paired v8 versus v9 benchmark
 
-Each cell used deterministic data and starting weights. V8 and v9 were executed in the same process with alternating order for nine paired repetitions. One-thread runs were pinned to CPU 0. Four-thread runs were pinned to CPUs 0-3 with `OMP_PROC_BIND=close` and `OMP_PLACES=cores`.
+The release benchmark times only configurations that actually dispatch to v9. To reduce host jitter, the active cells use roughly three times the update counts used in the short screening runs. V8 and v9 execute in the same process with alternating order for nine paired repetitions. One-thread runs were pinned to CPU 0. The four-thread run was pinned to CPUs 0-3 with `OMP_PROC_BIND=close` and `OMP_PLACES=cores`.
 
-| Rows | Updates | Threads | Dispatch | v8 median | v9 median | Reduction |
-|---:|---:|---:|---|---:|---:|---:|
-| 13,853 | 500 | 1 | v8 fallback | 0.183 s | 0.185 s | n/a |
-| 100,000 | 100 | 1 | v9 guarded full tile | 0.243 s | 0.238 s | **1.7%** |
-| 500,000 | 20 | 1 | v9 guarded full tile | 0.245 s | 0.236 s | **3.5%** |
-| 1,000,000 | 10 | 1 | v9 guarded full tile | 0.244 s | 0.237 s | **2.9%** |
-| 13,853 | 500 | 4 | v8 fallback | 0.093 s | 0.092 s | n/a |
-| 100,000 | 100 | 4 | v8 fallback | 0.124 s | 0.124 s | n/a |
-| 500,000 | 20 | 4 | v8 fallback | 0.122 s | 0.125 s | n/a |
-| 1,000,000 | 10 | 4 | v9 guarded full tile | 0.124 s | 0.118 s | **4.9%** |
+| Rows | Updates | Threads | v8 median | v9 median | Time reduction |
+|---:|---:|---:|---:|---:|---:|
+| 100,000 | 300 | 1 | 0.730 s | 0.716 s | **1.9%** |
+| 500,000 | 60 | 1 | 0.729 s | 0.723 s | **0.8%** |
+| 1,000,000 | 30 | 1 | 0.757 s | 0.739 s | **2.3%** |
+| 1,000,000 | 30 | 4 | 0.389 s | 0.360 s | **7.6%** |
 
-Fallback rows intentionally use the v8 implementation. Timing differences there are scheduler/run-order noise and are not claimed as v9 gains or regressions.
+Single-thread batches below 50,000 rows and parallel batches below 1,000,000 rows deliberately retain v8, so no v9 speed-up is claimed for those configurations.
 
-Peak resident memory for the 1,000,000-row, four-thread memory run was 95,616 KiB for v8 and 95,624 KiB for v9.
+Peak resident memory for the 1,000,000-row, four-thread memory run was 95,616 KiB for v8 and 95,624 KiB for v9, effectively unchanged.
 
 ## Numerical validation
 
-All 72 paired timing runs finished with an identical final scalar checksum. A separate full-state equivalence harness compared every byte of W1, W2 and both momentum arrays after the active v9 path. The 100,000-row one-thread case and 1,000,000-row four-thread case were both byte-identical to v8.
+All 36 paired release timing runs finished with an identical final scalar checksum. A separate full-state equivalence harness compared every byte of W1, W2 and both momentum arrays after the active v9 path. The 100,000-row one-thread case and 1,000,000-row four-thread case were both byte-identical to v8.
 
 The guarded path uses the same vector exponential operation as v8. The range proof only determines whether the existing `-700` exceptional branch can be omitted safely.
 
@@ -67,11 +63,11 @@ V1-v6 historical timings used an earlier AMD EPYC environment, while v7-v9 use t
 | Rows | Normalised v8 vs v1 | Paired v9 vs v8 | Normalised v9 vs v1 |
 |---:|---:|---:|---:|
 | 13,853 | 9.52x | unchanged | **9.52x** |
-| 100,000 | 11.35x | 1.017x | **11.55x** |
-| 500,000 | 14.21x | 1.036x | **14.72x** |
-| 1,000,000 | 14.78x | 1.030x | **15.22x** |
+| 100,000 | 11.35x | 1.020x | **11.57x** |
+| 500,000 | 14.21x | 1.008x | **14.33x** |
+| 1,000,000 | 14.78x | 1.023x | **15.12x** |
 
-For four threads, the v9 dispatch is unchanged from v8 below 1,000,000 rows. The one-million-row normalised ratio rises from about 47.1x to **49.54x** versus v1. These are derived progress ratios, not direct v1-versus-v9 measurements.
+For four threads, the v9 dispatch is unchanged from v8 below 1,000,000 rows. The one-million-row normalised ratio rises from about 47.1x to **50.95x** versus v1. These are derived progress ratios, not direct v1-versus-v9 measurements.
 
 ## Experiments rejected
 
