@@ -1,0 +1,9 @@
+V9 memory comparison
+Environment: Intel Xeon Platinum 8573C, GCC 14.2.0, Linux x86-64
+Workload: 1,000,000 rows, 4 threads
+
+v8 maximum resident set size: 95,616 KiB
+v9 maximum resident set size: 95,624 KiB
+Difference: 8 KiB
+
+Peak resident memory is effectively unchanged.

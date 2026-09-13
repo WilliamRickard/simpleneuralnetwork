@@ -1,0 +1,12 @@
+V9 exactness validation
+
+Method
+- Independent equivalence harness initialises v8 and v9 from identical deterministic state.
+- It executes the active v9 workload path and the corresponding v8 path.
+- It compares W1, W2, momentum/delta W1 and momentum/delta W2 byte-for-byte.
+
+Results
+100000 rows, 1 thread: byte-identical
+1000000 rows, 4 threads: byte-identical
+
+The paired release benchmark additionally produced zero final checksum difference in all 36 recorded v8/v9 pairs.

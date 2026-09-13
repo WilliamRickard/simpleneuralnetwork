@@ -1,0 +1,20 @@
+V9 optimisation experiment log
+
+Retained
+- Full 16-row tile specialisation: repeatable gain when combined with the guarded sigmoid path.
+- Direct AVX-512 sigmoid within the specialised tile: retained as part of the combined path.
+- Conservative unchecked-sigmoid guard: strongest exact-path improvement. Hidden pre-activations use sum(maxAbsX[k] * abs(w1[k,j])) in long double; output lower bound uses the sum of negative w2 values. Fast path requires a strict margin inside +/-699 versus v8's exceptional threshold at -700.
+- Parallel range path: retained only for batches >= 1,000,000 rows.
+
+Rejected
+- Network 64-byte alignment/aligned loads: inconsistent screening result.
+- Direct sigmoid dispatch in isolation: below noise floor.
+- Explicit OpenMP ownership in isolation: below retention threshold.
+- Cross-tile gradient-register carry: rejected before implementation after assembly inspection. The benchmark binary contains 104 ZMM instructions referencing stack locations, indicating existing register pressure/spilling. Keeping another 24-vector gradient state live across tiles would likely worsen spills.
+- oneMKL, SLEEF, AOCL-LibM: unavailable on test host.
+
+Validation
+- Final release benchmark used the same Xeon Platinum 8573C / GCC 14.2.0 / glibc libmvec environment as v8.
+- The active cells used 300, 60, 30 and 30 updates respectively to reduce host jitter.
+- All 36 paired release benchmark runs had zero final checksum difference.
+- Independent full-state byte comparison passed at 100,000 rows / 1 thread and 1,000,000 rows / 4 threads.
