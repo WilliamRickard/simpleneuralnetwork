@@ -17,7 +17,7 @@ Benchmark build, run from this directory:
 g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -fopenmp bench_v9.cpp -lm -o bench_v9
 ```
 
-`bench_v9.cpp` includes the frozen v8 benchmark harness from `../../v8/benchmark/bench_v8.cpp` and adds only the v9 comparison path. One-thread runs were pinned with `taskset -c 0`. The four-thread run used `taskset -c 0-3`, `OMP_PROC_BIND=close` and `OMP_PLACES=cores`.
+`bench_v9.cpp` includes the frozen v8 benchmark harness from `../../v8/benchmark/bench_v8.cpp` and adds only the v9 comparison path. The committed v8 harness contains a forward declaration of `sigvec_cached` without its helper definition, so the v9 wrapper supplies the same cached-dispatch helper used by the validated v8 implementation. One-thread runs were pinned with `taskset -c 0`. The four-thread run used `taskset -c 0-3`, `OMP_PROC_BIND=close` and `OMP_PLACES=cores`.
 
 ## Release benchmark method
 
