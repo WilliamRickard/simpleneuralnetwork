@@ -1,6 +1,18 @@
-#define main v9_benchmark_reference_main
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cmath>
+#include <cstdlib>
+#include <iomanip>
+#include <immintrin.h>
+#include <iostream>
+#include <vector>
+#include <omp.h>
+
+namespace v10_bench_v9 {
 #include "../../v9/benchmark/bench_v9.cpp"
-#undef main
+}
+using namespace v10_bench_v9;
 
 __attribute__((target("avx512f,avx512dq,fma"),always_inline)) static inline void forward8_v10(const Dataset&data,size_t base,const Network&net,double*hidden){
  for(size_t rr=0;rr<TILE;rr+=8){
