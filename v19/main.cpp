@@ -141,7 +141,7 @@ static void offlineRunV19(size_t rowCount,const OptimiserConfig&optimiser,double
     if(randomiseWeights)setmatrixrandom(network,rangeWone,rangeWtwo,generator);else loadWeights(network);
     const TrainResult result=trainRangeV19(data,0,rowCount,0,network,optimiser);
     writeWeights(network);
-    if(!result.reachedTarget)cout<<"Offline L-BFGS reached the maximum number of L-BFGS iterations before the target.\n";
+    if(!result.reachedTarget)cout<<"Offline L-BFGS reached the maximum number of iterations before the target.\n";
 }
 
 int main(){
