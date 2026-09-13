@@ -1,0 +1,21 @@
+V10 exactness validation
+
+Retained path
+- 1,000,000 rows
+- 100 updates
+- 4 threads
+- AVX-512/libmvec
+
+Method
+- V9 and v10 initialise from the same deterministic network state.
+- Each paired run executes the same update count.
+- Complete W1, W2, delta/momentum W1 and delta/momentum W2 arrays are compared byte-for-byte after training.
+
+Result
+- All 5 long paired runs: byte-identical full network state.
+- Final scalar checksum in every pair: 0.25546753619194329 for both v9 and v10.
+
+Arithmetic argument
+- V10 changes only inter-observation scheduling in the forward 11 x 16 multiply.
+- Each observation still performs k = 0..10 FMAs in exactly the same order.
+- Sigmoid, output dot/reduction, backpropagation, gradient tile reduction, thread reduction and weight update order are unchanged from v9.

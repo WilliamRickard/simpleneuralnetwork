@@ -1,0 +1,31 @@
+V10 exact-frontier experiment log
+
+Retained
+1. Eight-observation forward kernel for exactly 4 threads and batches >= 1,000,000 rows.
+   - W1 vectors are loaded once for eight observations instead of once for four.
+   - Per-observation FMA order remains unchanged.
+   - Long 1m x 100-update, 4-thread test: 4.44% reduction from separate medians and 2.62% median paired reduction.
+   - Full network state byte-identical in all 5 long pairs.
+
+Rejected
+1. W1 gradient split 6+5 inside one tile function.
+   - Byte-identical, but no robust speed-up and slower on large parallel work.
+2. W1 gradient split 4+4+3.
+   - Byte-identical, but slower due repeated row/delta traversal.
+3. No-inline gradient helpers (6+5).
+   - Removed ZMM stack references inside the two gradient helpers themselves, but end-to-end timing did not improve reliably.
+4. PGO.
+   - Correctly trained GCC profile gave roughly +1% at 1m/1 thread in a small sample, about -0.4% at 1m/4 threads, and a regression at 100k. Not robust enough to retain.
+5. -march=native.
+   - GCC 14.2.0 resolved native to icelake-server on this virtualised Xeon 8573C runner and the resulting executable segfaulted. Rejected.
+6. -march=emeraldrapids.
+   - Resulting executable also segfaulted on this runner. Rejected.
+7. Eight-observation forward kernel for single-thread training.
+   - Byte-identical but slower. V10 therefore retains v9 for all single-thread workloads.
+8. Eight-observation forward kernel for 2 or 5 threads.
+   - 2 threads: about 1.3% slower in screening.
+   - 5 threads: about 0.7% slower in screening.
+   - 3 threads showed a small positive signal (~1.5%) but only in a short sample, so it was not retained.
+
+Conclusion
+V10 is intentionally narrow. The exact source-level kernel is now close to saturated on this benchmark machine; remaining ideas either failed to beat noise or regressed another exact workload.
