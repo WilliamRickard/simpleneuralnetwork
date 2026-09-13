@@ -1,0 +1,19 @@
+name: v13 compile validation
+
+on:
+  push:
+    branches: [v13-bf16]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile portable production
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic v13/main.cpp -o /tmp/simple_nn_v13_portable
+      - name: Compile accelerated production
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -fopenmp -DSIMPLE_NN_USE_LIBMVEC v13/main.cpp -lm -o /tmp/simple_nn_v13_accelerated
+      - name: Compile benchmark harness
+        run: g++ -std=c++17 -O3 -Wall -Wextra -Wpedantic -fopenmp -mavx512bf16 -mavx512bw v13/benchmark/bench_v13.cpp -lm -o /tmp/bench_v13

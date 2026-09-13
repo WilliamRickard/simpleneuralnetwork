@@ -1,0 +1,41 @@
+V13 numerical validation
+
+Retained precision contract
+- Master weights: FP64.
+- Momentum state: FP64.
+- W1 forward input operands: BF16.
+- W1 forward weight operands: BF16.
+- Hidden preactivation accumulation: FP32 via VDPBF16PS.
+- Sigmoid: inherited v12 FP32 adaptive sigmoid.
+- W2 forward: FP32.
+- Backpropagation: FP32.
+- W1/W2 gradient accumulation: FP32.
+- Cross-thread/optimiser promotion: inherited FP64 path.
+- Exact target confirmation and inference: inherited FP64 path.
+
+Release cells
+100,000 rows / 100 updates / 1 thread
+- max final weight absolute difference = 3.4230651230204856e-09
+- exact RMSE difference = 1.047183700864096e-09
+
+500,000 rows / 40 updates / 1 thread
+- max final weight absolute difference = 1.378998623624561e-09
+- exact RMSE difference = 4.12454903564452e-10
+
+1,000,000 rows / 30 updates / 1 thread
+- max final weight absolute difference = 9.127930078456359e-10
+- exact RMSE difference = 2.752892913626681e-10
+
+Long-run stability
+100,000 rows / 1,000 updates / 1 thread
+- max final weight absolute difference = 3.4286635572366997e-08
+- exact RMSE: v12 0.092411000688924314, v13 0.09241098976925724
+
+1,000,000 rows / 300 updates / 1 thread
+- max final weight absolute difference = 1.0390992469244686e-08
+- exact RMSE: v12 0.098950042852960232, v13 0.098950039011682228
+
+Four-thread screening
+- Not retained.
+- Results varied materially with sample length and pairing methodology.
+- Production four-thread workloads therefore remain on v12.
