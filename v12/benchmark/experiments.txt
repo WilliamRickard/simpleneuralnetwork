@@ -1,0 +1,28 @@
+V12 experiment log
+
+Retained: FP64 master weights + FP64 momentum + FP32 training compute
+- Converts the small 192-weight network to FP32 once per pass.
+- Uses one 16-float AVX-512 vector for the complete hidden layer.
+- Keeps 11 W1 gradient vectors plus W2 gradient in registers for each 16-row tile.
+- Promotes accumulated thread gradients to FP64 before the existing update.
+- Release time reduction: roughly 44% to 50% paired versus v11.
+- Numerical drift remained extremely small in release and long-run tests.
+
+Rejected: naive per-row FP32 gradient storage
+- First prototype loaded/stored all 11 gradient vectors for every observation.
+- At 100k rows it was approximately flat versus the FP64 baseline.
+- This showed that precision reduction alone was not enough; the register-resident tile design was required.
+
+Rejected: full FP32 master weights and momentum
+- Essentially the same runtime as mixed precision.
+- Final-weight drift was roughly three orders of magnitude larger in release tests.
+- Long-run drift reached approximately 1e-6 to 3e-6.
+- No speed justification for the weaker numerical contract.
+
+Screened: eight-row FP32 forward grouping
+- Helped some single-thread samples slightly but was inconsistent at the million-row and four-thread cells.
+- Four-row grouping was retained as the simpler and more robust production choice.
+
+Deferred: BF16
+- The host exposes AVX512_BF16 and BF16 can double operand density over FP32.
+- It materially reduces mantissa precision, so it belongs in a separate version with its own convergence and accuracy contract.
