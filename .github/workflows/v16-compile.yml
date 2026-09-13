@@ -1,0 +1,19 @@
+name: v16 compile
+
+on:
+  pull_request:
+    paths:
+      - 'v16/**'
+      - '.github/workflows/v16-compile.yml'
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Portable production
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic v16/main.cpp -o /tmp/v16-portable
+      - name: Accelerated production
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -fopenmp -DSIMPLE_NN_USE_LIBMVEC v16/main.cpp -lm -o /tmp/v16-accelerated
+      - name: Benchmark
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -fopenmp -march=native v16/benchmark/bench_v16.cpp -lm -o /tmp/bench-v16
