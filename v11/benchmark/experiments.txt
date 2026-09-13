@@ -1,0 +1,29 @@
+V11 experiments
+
+Retained
+1. Adaptive AVX-512 sigmoid with a degree-5 odd central polynomial.
+   - approximation used only when every lane satisfies |x| <= 1
+   - checked libmvec fallback for any vector containing an outer lane
+   - dense-grid central-interval max absolute error about 2.69e-6
+   - materially faster across every retained v11 workload
+   - simpler and more accurate than the earlier multi-region production candidate
+
+Rejected
+1. Row-oriented structure-of-arrays blocked kernel, B=64.
+   The 11 x 16 network is too skinny for this layout. Weight broadcasts and horizontal reductions cost more than the reduced gradient-store traffic. It was materially slower than the v10-style hidden-node SIMD kernel.
+
+2. Row-oriented structure-of-arrays blocked kernel, B=128.
+   Same conclusion. Replacing libmvec with a polynomial sigmoid recovered substantial time but the blocked architecture still failed to beat the existing forward/backprop layout.
+
+3. General piecewise degree-7 sigmoid over a broad range.
+   Faster than libmvec, but it spends polynomial work on ranges not reached by the benchmark hot path.
+
+4. General piecewise degree-9 sigmoid over a broad range.
+   More accurate than degree 7 but slower than the final central-only design.
+
+5. Multi-region adaptive polynomial with approximate middle/outer regions.
+   This was the previous v11 candidate. The final design instead uses exact libmvec fallback outside |x| <= 1, reducing both implementation complexity and global approximation risk without sacrificing the measured common-path gain.
+
+Not included in v11
+- oneMKL and SLEEF were not installed in the benchmark environment, so no unverified third-party dependency was added.
+- FP32/mixed precision, fast-math compiler modes, mini-batches and alternative optimisers remain candidates for later versions because they relax the numerical/training contract further than v11.

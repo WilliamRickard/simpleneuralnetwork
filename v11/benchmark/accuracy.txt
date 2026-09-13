@@ -1,0 +1,41 @@
+V11 numerical validation
+
+Final sigmoid approximation
+- Common path interval: |x| <= 1.
+- Polynomial: 0.5 + x * (c1 + x^2 * (c3 + x^2 * c5)).
+- c1 = 0.24998101634651657
+- c3 = -0.020677835421401624
+- c5 = 0.0017580292406143272
+- Any AVX-512 vector containing a lane with |x| > 1 falls back to the existing checked libmvec sigmoid for that vector.
+- Dense 1,000,001-point validation grid on [-1,1]: maximum absolute sigmoid error approximately 2.6831e-6.
+
+Release-shaped training comparisons, evaluated afterwards with the exact scalar sigmoid
+100,000 rows / 100 updates / 1 thread:
+- max final weight absolute difference = 6.783299533186238e-09
+- exact-sigmoid RMSE: v10-style 0.10089776730880001, v11 0.10089775420564996
+
+500,000 rows / 40 updates / 1 thread:
+- max final weight absolute difference = 2.557869777097821e-09
+- exact-sigmoid RMSE: v10-style 0.10150205715245775, v11 0.10150205221139864
+
+1,000,000 rows / 30 updates / 1 thread:
+- max final weight absolute difference = 1.8632352327685453e-09
+- exact-sigmoid RMSE: v10-style 0.10160047155588135, v11 0.10160046795683868
+
+1,000,000 rows / 60 updates / 4 threads:
+- max final weight absolute difference = 3.955830107926772e-09
+- exact-sigmoid RMSE: v10-style 0.10130227755393138, v11 0.10130226991232164
+
+Long-run stability
+100,000 rows / 1,000 updates / 1 thread:
+- max final weight absolute difference = 8.003846654891511e-08
+- exact-sigmoid RMSE: v10-style 0.092411155356220673, v11 0.092411000690721209
+
+1,000,000 rows / 300 updates / 4 threads:
+- max final weight absolute difference = 2.1529842963996515e-08
+- exact-sigmoid RMSE: v10-style 0.098950084448879150, v11 0.098950042842125011
+
+Stopping semantics
+- Training gradients and the lightweight percentage-error metric use the adaptive sigmoid on retained v11 paths.
+- If the approximate percentage-error metric indicates that the target may have been reached, v11 recomputes metrics with the existing exact inference path before accepting target success.
+- Therefore an approximation-only false-positive target crossing is not accepted.

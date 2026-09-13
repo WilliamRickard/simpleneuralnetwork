@@ -1,0 +1,37 @@
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cmath>
+#include <iomanip>
+#include <immintrin.h>
+#include <iostream>
+#include <vector>
+#include <omp.h>
+using namespace std;
+constexpr size_t INPUTS=11,HIDDEN=16,W1=176,TILE=16;
+struct D{size_t n;vector<double>x,y;explicit D(size_t n):n(n),x(n*INPUTS),y(n){}const double*row(size_t r)const{return x.data()+r*INPUTS;}};
+struct N{array<double,W1>w1{},v1{};array<double,HIDDEN>w2{},v2{};};
+struct alignas(64) A{array<double,W1>g1{};array<double,HIDDEN>g2{};void clear(){g1.fill(0);g2.fill(0);}};
+extern "C" __m512d _ZGVeN8v_exp(__m512d);
+__attribute__((target("avx512f"),always_inline)) static inline void sigExact(double*a,size_t n){const __m512d one=_mm512_set1_pd(1),zero=_mm512_setzero_pd();for(size_t i=0;i<n;i+=8){const __m512d x=_mm512_loadu_pd(a+i),e=_ZGVeN8v_exp(_mm512_sub_pd(zero,x));_mm512_storeu_pd(a+i,_mm512_div_pd(one,_mm512_add_pd(one,e)));}}
+__attribute__((target("avx512f,avx512dq,fma"),always_inline)) static inline void sigAdaptive(double*a,size_t n){
+ const __m512d one=_mm512_set1_pd(1),zero=_mm512_setzero_pd(),mask=_mm512_castsi512_pd(_mm512_set1_epi64(0x7fffffffffffffffLL));
+ const __m512d limit=_mm512_set1_pd(1.0),half=_mm512_set1_pd(0.5),c1=_mm512_set1_pd(0.24998101634651657),c3=_mm512_set1_pd(-0.020677835421401624),c5=_mm512_set1_pd(0.0017580292406143272);
+ for(size_t i=0;i<n;i+=8){const __m512d x=_mm512_loadu_pd(a+i),ax=_mm512_and_pd(x,mask);if(_mm512_cmp_pd_mask(ax,limit,_CMP_GT_OQ)){const __m512d e=_ZGVeN8v_exp(_mm512_sub_pd(zero,x));_mm512_storeu_pd(a+i,_mm512_div_pd(one,_mm512_add_pd(one,e)));continue;}const __m512d x2=_mm512_mul_pd(x,x);__m512d q=_mm512_fmadd_pd(c5,x2,c3);q=_mm512_fmadd_pd(q,x2,c1);_mm512_storeu_pd(a+i,_mm512_fmadd_pd(x,q,half));}
+}
+static inline double sigmoid(double x){return 1.0/(1.0+exp(-x));}
+static void fill(D&d){array<double,W1>tw1{};array<double,HIDDEN>tw2{};for(size_t k=0;k<INPUTS;k++)for(size_t j=0;j<HIDDEN;j++)tw1[k*HIDDEN+j]=.22*sin(.17*(k+1)*(j+2));for(size_t j=0;j<HIDDEN;j++)tw2[j]=.28*cos(.31*(j+1));for(size_t i=0;i<d.n;i++){double*z=d.x.data()+i*INPUTS;for(size_t k=0;k<INPUTS;k++)z[k]=.55*sin(.013*(i+1)*(k+1))+.35*cos(.007*(i+3)*(k+2));double o=0;for(size_t j=0;j<HIDDEN;j++){double h=0;for(size_t k=0;k<INPUTS;k++)h+=z[k]*tw1[k*HIDDEN+j];o+=sigmoid(h)*tw2[j];}d.y[i]=sigmoid(o);}}
+static void init(N&n){for(size_t k=0;k<INPUTS;k++)for(size_t j=0;j<HIDDEN;j++)n.w1[k*HIDDEN+j]=.12*sin(.43*(k+1)*(j+1));for(size_t j=0;j<HIDDEN;j++)n.w2[j]=.15*cos(.37*(j+1));}
+#define DECL __m512d ga0=_mm512_setzero_pd(),gb0=_mm512_setzero_pd(),ga1=ga0,gb1=ga0,ga2=ga0,gb2=ga0,ga3=ga0,gb3=ga0,ga4=ga0,gb4=ga0,ga5=ga0,gb5=ga0,ga6=ga0,gb6=ga0,ga7=ga0,gb7=ga0,ga8=ga0,gb8=ga0,ga9=ga0,gb9=ga0,ga10=ga0,gb10=ga0
+#define ACC(K,X,Y) do{const __m512d xv=_mm512_set1_pd(x[K]);X=_mm512_fmadd_pd(xv,d0,X);Y=_mm512_fmadd_pd(xv,d1,Y);}while(0)
+#define STORE(K,X,Y) do{double*g=a.g1.data()+K*HIDDEN;_mm512_storeu_pd(g,_mm512_add_pd(_mm512_loadu_pd(g),X));_mm512_storeu_pd(g+8,_mm512_add_pd(_mm512_loadu_pd(g+8),Y));}while(0)
+template<int R,bool Approx> __attribute__((target("avx512f,avx512dq,fma"))) static void block(const D&d,size_t base,const N&n,A&a){alignas(64) double h[TILE*HIDDEN],out[TILE],d3[TILE];const __m512d one=_mm512_set1_pd(1);for(size_t rr=0;rr<TILE;rr+=R){__m512d z0[8],z1[8];const double*x[8];for(int r=0;r<R;r++){z0[r]=_mm512_setzero_pd();z1[r]=_mm512_setzero_pd();x[r]=d.row(base+rr+r);}for(size_t k=0;k<INPUTS;k++){const double*w=n.w1.data()+k*HIDDEN;const __m512d w0=_mm512_loadu_pd(w),w1=_mm512_loadu_pd(w+8);for(int r=0;r<R;r++){const __m512d v=_mm512_set1_pd(x[r][k]);z0[r]=_mm512_fmadd_pd(v,w0,z0[r]);z1[r]=_mm512_fmadd_pd(v,w1,z1[r]);}}for(int r=0;r<R;r++){double*p=h+(rr+r)*HIDDEN;_mm512_store_pd(p,z0[r]);_mm512_store_pd(p+8,z1[r]);}}if(Approx)sigAdaptive(h,TILE*HIDDEN);else sigExact(h,TILE*HIDDEN);const __m512d w20=_mm512_loadu_pd(n.w2.data()),w21=_mm512_loadu_pd(n.w2.data()+8);for(size_t r=0;r<TILE;r++){double*p=h+r*HIDDEN;const __m512d sum=_mm512_fmadd_pd(_mm512_load_pd(p+8),w21,_mm512_mul_pd(_mm512_load_pd(p),w20));out[r]=_mm512_reduce_add_pd(sum);}if(Approx)sigAdaptive(out,TILE);else sigExact(out,TILE);for(size_t r=0;r<TILE;r++){const double e=out[r]-d.y[base+r];d3[r]=e*out[r]*(1-out[r]);}__m512d gg20=_mm512_loadu_pd(a.g2.data()),gg21=_mm512_loadu_pd(a.g2.data()+8);DECL;for(size_t r=0;r<TILE;r++){const double*aa=h+r*HIDDEN;const __m512d dd=_mm512_set1_pd(d3[r]),a0=_mm512_load_pd(aa),a1=_mm512_load_pd(aa+8);gg20=_mm512_fmadd_pd(a0,dd,gg20);gg21=_mm512_fmadd_pd(a1,dd,gg21);const __m512d d0=_mm512_mul_pd(_mm512_mul_pd(dd,w20),_mm512_mul_pd(a0,_mm512_sub_pd(one,a0))),d1=_mm512_mul_pd(_mm512_mul_pd(dd,w21),_mm512_mul_pd(a1,_mm512_sub_pd(one,a1)));const double*x=d.row(base+r);ACC(0,ga0,gb0);ACC(1,ga1,gb1);ACC(2,ga2,gb2);ACC(3,ga3,gb3);ACC(4,ga4,gb4);ACC(5,ga5,gb5);ACC(6,ga6,gb6);ACC(7,ga7,gb7);ACC(8,ga8,gb8);ACC(9,ga9,gb9);ACC(10,ga10,gb10);}_mm512_storeu_pd(a.g2.data(),gg20);_mm512_storeu_pd(a.g2.data()+8,gg21);STORE(0,ga0,gb0);STORE(1,ga1,gb1);STORE(2,ga2,gb2);STORE(3,ga3,gb3);STORE(4,ga4,gb4);STORE(5,ga5,gb5);STORE(6,ga6,gb6);STORE(7,ga7,gb7);STORE(8,ga8,gb8);STORE(9,ga9,gb9);STORE(10,ga10,gb10);}
+static void update(N&n,const array<double,W1>&g1,const array<double,HIDDEN>&g2,double lr){for(size_t i=0;i<W1;i++){n.v1[i]=.75*n.v1[i]-lr*g1[i];n.w1[i]+=n.v1[i];}for(size_t i=0;i<HIDDEN;i++){n.v2[i]=.75*n.v2[i]-lr*g2[i];n.w2[i]+=n.v2[i];}}
+template<int R,bool Approx> static double run(const D&d,int updates,int threads,N&n){init(n);vector<A>aa(threads);array<double,W1>g1{};array<double,HIDDEN>g2{};const size_t blocks=d.n/TILE;const double lr=.0001/d.n;const auto st=chrono::steady_clock::now();
+#pragma omp parallel num_threads(threads) shared(n,aa,g1,g2)
+{const int tid=omp_get_thread_num();const size_t q=blocks/threads,rem=blocks%threads,first=tid*q+min<size_t>(tid,rem),last=first+q+(tid<(int)rem);for(int u=0;u<updates;u++){aa[tid].clear();for(size_t b=first;b<last;b++)block<R,Approx>(d,b*TILE,n,aa[tid]);
+#pragma omp barrier
+#pragma omp single
+{g1.fill(0);g2.fill(0);for(int t=0;t<threads;t++){for(size_t i=0;i<W1;i++)g1[i]+=aa[t].g1[i];for(size_t j=0;j<HIDDEN;j++)g2[j]+=aa[t].g2[j];}update(n,g1,g2,lr);}}}return chrono::duration<double>(chrono::steady_clock::now()-st).count();}
+static double rmse(const D&d,const N&n){long double ss=0;for(size_t r=0;r<d.n;r++){const double*x=d.row(r);double o=0;for(size_t j=0;j<HIDDEN;j++){double z=0;for(size_t k=0;k<INPUTS;k++)z+=x[k]*n.w1[k*HIDDEN+j];o+=sigmoid(z)*n.w2[j];}const double e=sigmoid(o)-d.y[r];ss+=e*e;}return sqrt((double)(ss/d.n));}
+int main(int argc,char**argv){const size_t rows=argc>1?strtoull(argv[1],0,10):1000000;const int updates=argc>2?atoi(argv[2]):30,threads=argc>3?atoi(argv[3]):1,reps=argc>4?atoi(argv[4]):5;D d(rows);fill(d);for(int rep=0;rep<reps;rep++){N e,a;double te,ta;if(threads==1){if(rep%2){ta=run<4,true>(d,updates,threads,a);te=run<4,false>(d,updates,threads,e);}else{te=run<4,false>(d,updates,threads,e);ta=run<4,true>(d,updates,threads,a);}}else{if(rep%2){ta=run<8,true>(d,updates,threads,a);te=run<8,false>(d,updates,threads,e);}else{te=run<8,false>(d,updates,threads,e);ta=run<8,true>(d,updates,threads,a);}}double md=0;for(size_t i=0;i<W1;i++)md=max(md,abs(e.w1[i]-a.w1[i]));for(size_t i=0;i<HIDDEN;i++)md=max(md,abs(e.w2[i]-a.w2[i]));cout<<setprecision(17)<<rows<<','<<updates<<','<<threads<<','<<rep<<','<<te<<','<<ta<<','<<md<<','<<rmse(d,e)<<','<<rmse(d,a)<<'\n';}}
