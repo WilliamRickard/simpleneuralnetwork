@@ -11,13 +11,24 @@ This directory records the controlled v8-versus-v9 benchmark and validation used
 - glibc `libmvec` vector math
 - no oneMKL, SLEEF or AOCL-LibM installed
 
-Benchmark build:
+Benchmark build, run from this directory:
 
 ```text
 g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -fopenmp bench_v9.cpp -lm -o bench_v9
 ```
 
-One-thread runs were pinned with `taskset -c 0`. Four-thread runs used `taskset -c 0-3`, `OMP_PROC_BIND=close` and `OMP_PLACES=cores`. Each workload/thread cell contains nine paired repetitions. V8 and v9 run in the same process and the order alternates by repetition.
+`bench_v9.cpp` includes the frozen v8 benchmark harness from `../../v8/benchmark/bench_v8.cpp` and adds only the v9 comparison path. One-thread runs were pinned with `taskset -c 0`. The four-thread run used `taskset -c 0-3`, `OMP_PROC_BIND=close` and `OMP_PLACES=cores`.
+
+## Release benchmark method
+
+The release summary includes only configurations that actually dispatch to v9. Short screening runs showed enough host jitter that sub-second cells could move by several percentage points, so the final active-path measurements use longer runs:
+
+- 100,000 rows x 300 updates, 1 thread
+- 500,000 rows x 60 updates, 1 thread
+- 1,000,000 rows x 30 updates, 1 thread
+- 1,000,000 rows x 30 updates, 4 threads
+
+Each cell contains nine paired repetitions. V8 and v9 execute in the same process and the run order alternates by repetition. `benchmark_summary.csv` contains medians, standard deviations and the maximum checksum difference. `raw_timings.csv` retains every pair.
 
 ## Dispatch represented by the benchmark
 
@@ -26,11 +37,11 @@ One-thread runs were pinned with `taskset -c 0`. Four-thread runs used `taskset 
 - four threads, below 1,000,000 rows: frozen v8 fallback
 - four threads, at least 1,000,000 rows: v9 contiguous range path with the same guarded full-tile kernel
 
-The final summary is in `benchmark_summary.csv`. `raw_timings.csv` retains every paired run.
+Fallback configurations were tested during screening but are omitted from the release performance table because v9 intentionally does not change their training kernel.
 
 ## Exactness validation
 
-The timing harness checks a deterministic final-weight checksum in every paired run. The maximum absolute checksum difference across the recorded cells is zero.
+All 36 release benchmark pairs finished with zero final checksum difference.
 
 `equivalence.txt` records the stronger independent check: complete W1, W2, deltaW1 and deltaW2 arrays are byte-identical for the 100,000-row one-thread path and 1,000,000-row four-thread path.
 
