@@ -1,6 +1,7 @@
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmisleading-indentation"
+#pragma GCC diagnostic ignored "-Wunused-function"
 #endif
 #define main v18_embedded_main
 #include "../v18/main.cpp"
@@ -10,6 +11,7 @@
 #endif
 
 /* V19: retain v18's fast path, then expand L-BFGS memory for deep convergence. */
+#if defined(SIMPLE_NN_USE_LIBMVEC) && defined(__GLIBC__) && defined(__x86_64__) && defined(__GNUC__)
 constexpr size_t V19_DEEP_HISTORY=160;
 constexpr double V19_DEEP_STAGE_PERCENTAGE=0.05;
 
@@ -23,7 +25,6 @@ static bool deepStageV19(bool alreadyDeep,double percentageError){
     return alreadyDeep||percentageError<=V19_DEEP_STAGE_PERCENTAGE;
 }
 
-#if defined(SIMPLE_NN_USE_LIBMVEC) && defined(__GLIBC__) && defined(__x86_64__) && defined(__GNUC__)
 /** Build a descent direction, falling back to steepest descent if L-BFGS loses descent. */
 static void descentDirectionV19(const vector<double>&gradient,deque<V14HistoryPair>&history,
                                 vector<double>&direction,double&directional){
@@ -140,7 +141,7 @@ static void offlineRunV19(size_t rowCount,const OptimiserConfig&optimiser,double
     if(randomiseWeights)setmatrixrandom(network,rangeWone,rangeWtwo,generator);else loadWeights(network);
     const TrainResult result=trainRangeV19(data,0,rowCount,0,network,optimiser);
     writeWeights(network);
-    if(!result.reachedTarget)cout<<"Offline L-BFGS reached the maximum number of iterations before the target.\n";
+    if(!result.reachedTarget)cout<<"Offline L-BFGS reached the maximum number of L-BFGS iterations before the target.\n";
 }
 
 int main(){
