@@ -1,0 +1,11 @@
+V16 SIMD evaluator experiments
+
+1. Baseline: v15 exact four-worker scalar FP64 evaluator.
+2. One-row AVX-512 hidden-vector kernel: retained FP64 arithmetic and cut time materially.
+3. Four-row W1-load sharing: improved further by amortising the 22 W1 vector loads across four observations.
+4. Eight-row grouping: best overall release choice across 100k, 500k and 1m rows.
+5. Sixteen-row grouping: competitive at 1m rows but less consistent at smaller sizes and higher register pressure, so rejected for production.
+
+All retained comparisons used four workers, the same L-BFGS history/Armijo logic and the same 3.9% target. Both v15 and v16 reached target in exactly three evaluations in every release run.
+
+V16 remains FP64 but is not internally bit-identical to v15 because hidden sigmoids use FP64 libmvec vector exp and reductions are reassociated. The inherited scalar calculateMetrics path performs the final stopping confirmation.
