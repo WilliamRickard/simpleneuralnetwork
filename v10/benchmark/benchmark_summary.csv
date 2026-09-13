@@ -1,0 +1,2 @@
+rows,updates,threads,v10_path,reps,v9_median_seconds,v10_median_seconds,speedup_from_medians,time_reduction_from_medians_pct,median_paired_speedup,median_paired_time_reduction_pct,v9_std_seconds,v10_std_seconds,all_state_byte_identical
+1000000,100,4,v10_forward8,5,2.488518020,2.378072986,1.046443080027,4.438185020657,1.026933023770,2.622666049963,0.127624038,0.084057760,1
