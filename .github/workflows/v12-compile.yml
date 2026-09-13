@@ -1,0 +1,19 @@
+name: v12 compile validation
+
+on:
+  push:
+    branches: [v12-mixed-precision]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile portable production
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic v12/main.cpp -o /tmp/simple_nn_v12_portable
+      - name: Compile accelerated production
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -fopenmp -DSIMPLE_NN_USE_LIBMVEC v12/main.cpp -lm -o /tmp/simple_nn_v12_accelerated
+      - name: Compile benchmark harness
+        run: g++ -std=c++17 -O3 -Wall -Wextra -Wpedantic -fopenmp v12/benchmark/bench_v12.cpp -lm -o /tmp/bench_v12
