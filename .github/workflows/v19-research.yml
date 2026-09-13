@@ -1,0 +1,29 @@
+name: v19 deep convergence research
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v19-deep-convergence
+    paths:
+      - 'v19/benchmark/diagnose_v19.cpp'
+      - '.github/workflows/v19-research.yml'
+
+jobs:
+  history-sweep:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        history: [10, 20, 40, 80]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile diagnostic benchmark
+        run: >-
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -fopenmp
+          -DSIMPLE_NN_USE_LIBMVEC v19/benchmark/diagnose_v19.cpp
+          -lmvec -o /tmp/v19-diagnose
+      - name: Run post-v18 history sweep
+        run: >-
+          OMP_NUM_THREADS=4 /tmp/v19-diagnose
+          20000 ${{ matrix.history }} 0.005 3000 100
