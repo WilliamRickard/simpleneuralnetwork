@@ -1,0 +1,15 @@
+V17 experiment log
+
+Retained
+1. Vectorise output sigmoid across the existing eight-row AVX-512 group.
+2. Vectorise grouped squared-error and percentage-error calculations.
+3. Parallelise the final scalar `predictRow` confirmation across four workers, then aggregate row contributions in original order.
+
+Rejected
+1. Persistent std::thread worker pool: slower at 100k and 500k; not robustly better at 1m. OpenMP team reuse was already efficient.
+2. SoA input copy: no consistent speed benefit for only 11 input features.
+3. Metrics-only line-search candidates: slower because forward sigmoid work dominates.
+4. Skip-final-gradient split evaluation: also slower because it requires an extra forward pass.
+5. Wider row grouping beyond v16's eight rows was not revisited because v16 had already shown higher register pressure and less consistent small-workload results.
+
+Release benchmark includes the final confirmation pass rather than timing only the L-BFGS objective/gradient evaluations.
