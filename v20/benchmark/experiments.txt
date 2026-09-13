@@ -1,0 +1,83 @@
+V20 deep-convergence investigation
+==================================
+
+Baseline
+--------
+V19 staged L-BFGS: history 10 above 0.05% PE, history 160 thereafter.
+V18 scale-aware curvature test, Armijo search and MSE objective retained.
+
+Rejected history-management experiments
+---------------------------------------
+1. Reject highly collinear s-pairs.
+   Helped early, then starved the history and stalled the tail.
+2. Replace the most similar stored s-pair.
+   Strong 5k results, but not robust at 20k 0.001%.
+3. Curvature-angle quality eviction.
+   Lost chronological secant information and converged poorly.
+4. Periodic redundancy replacement.
+   Did not improve the 20k tail.
+5. Direction-quality-triggered replacement.
+   Did not improve the 20k tail.
+6. Two-timescale history with downsampled old pairs.
+   Rejected in screening.
+7. Late history expansion 160 -> 192.
+   Worse than v19 history 160.
+8. Dense BFGS continuation below 0.005%.
+   Small roughly 1-2% gain only, below the release bar.
+
+Conditioning diagnosis
+----------------------
+At low error, a Gauss-Newton approximation was extremely ill-conditioned. The
+measured spectrum spanned roughly 13 orders of magnitude, while the diagonal
+alone varied by roughly 1.9e4. This motivated changing the initial L-BFGS
+inverse-Hessian scale rather than deleting curvature pairs.
+
+Retained preconditioner
+-----------------------
+At the first current state with PE <= 0.05%, compute one exact row pass of the
+prediction Jacobian diagonal:
+    d_i = mean_r (d yhat_r / d theta_i)^2
+Use the median m of d and set
+    scale_i = clip(sqrt(m / max(d_i, 1e-18*m)), 1/28, 28)
+Then use gamma * scale_i in the initial matrix of the normal two-loop L-BFGS
+recursion. The scale is fixed for the remainder of the run.
+
+Why square-root scaling
+-----------------------
+Full inverse-diagonal scaling was less robust. The square-root transform
+reduces anisotropy while avoiding an aggressive approximate Newton step.
+
+Deterministic AVX2/libmvec screening
+------------------------------------
+All comparisons below use the same four-worker FP64 screening evaluator and
+count the one Gauss-Newton pass as one row-pass equivalent.
+
+rows=5000 target=0.005  v19=858   v20=393
+rows=5000 target=0.001  v19=4423  v20=1672
+rows=20000 target=0.005 v19=612   v20=339
+rows=20000 target=0.001 v19=3700  v20=1796
+rows=100000 target=0.005 v19=591  v20=333
+rows=100000 target=0.001 v19=3643 v20=1199
+
+Clip sensitivity
+----------------
+The best clip is not monotonic across row counts. At 20k, clip 32 was faster
+than 16; at 100k, clip 28 was materially faster than 32. Clip 28 was retained
+as the cross-scale robustness choice. Very large clips saturated and then
+worsened the trajectory.
+
+Fast-path contract
+------------------
+No preconditioner is computed until the current state is already at or below
+0.05% PE and the requested target requires another iteration. The code calls
+directionV14 directly when no diagonal is active, preserving the existing
+v19 direction calculation above the threshold.
+
+Validation completed locally
+----------------------------
+- Production v20 source compiled against a strict interface stub in portable
+  C++11 mode with -O3 -Wall -Wextra -Wpedantic -Werror.
+- Accelerated path also compiled with -fopenmp -DSIMPLE_NN_USE_LIBMVEC under
+  the same warning policy.
+- This is a syntax/interface validation, not a claim that GitHub Actions ran
+  against the full repository.
