@@ -9,4 +9,4 @@ Results
 100000 rows, 1 thread: byte-identical
 1000000 rows, 4 threads: byte-identical
 
-The paired timing harness additionally produced zero final checksum difference in all 72 recorded v8/v9 pairs.
+The paired release benchmark additionally produced zero final checksum difference in all 36 recorded v8/v9 pairs.
