@@ -1,0 +1,50 @@
+V11 numerical validation
+
+Sigmoid approximation
+- Common path: degree-4 polynomial on |x| <= 1.
+- Middle path: degree-8 polynomial on 1 < |x| <= 4.
+- Outer path: degree-8 polynomial on 4 < |x| <= 12.
+- Saturation outside |x| > 12.
+- Dense-grid validation on [-20, 20]: maximum absolute sigmoid error = 6.566964233945677e-06.
+- Approximation output remains within [0, 1] on the dense grid.
+
+Observed activation range on the deterministic 1,000,000-row benchmark after 100 exact-sigmoid updates
+- maximum |hidden preactivation| = 0.66100956033567548
+- maximum |output preactivation| = 0.10162080657597197
+Thus the degree-4 common path handles the benchmark's measured activations.
+
+Release-shaped training comparisons, evaluated afterwards with the exact scalar sigmoid
+100,000 rows / 300 updates / 1 thread:
+- max final weight absolute difference = 2.3908057159016671e-08
+- exact-sigmoid RMSE: v10 0.098941920767415772, v11 0.098941875593246964
+- exact-sigmoid max absolute prediction error: v10 0.12706288426622719, v11 0.12706283883188424
+
+500,000 rows / 60 updates / 1 thread:
+- max final weight absolute difference = 4.2370658648316351e-09
+- exact-sigmoid RMSE: v10 0.10130335555814832, v11 0.10130334758013815
+- exact-sigmoid max absolute prediction error: v10 0.1294286494408004, v11 0.12942864142080807
+
+1,000,000 rows / 30 updates / 1 thread:
+- max final weight absolute difference = 1.9832991082768814e-09
+- exact-sigmoid RMSE: v10 0.10160047155588135, v11 0.10160046782360668
+- exact-sigmoid max absolute prediction error: v10 0.12972853740301021, v11 0.12972853365127074
+
+1,000,000 rows / 100 updates / 4 threads:
+- max final weight absolute difference = 7.3220078750102502e-09
+- exact-sigmoid RMSE: v10 0.1009061305587966, v11 0.100906116762337
+- exact-sigmoid max absolute prediction error: v10 0.12903026059809786, v11 0.12903024672780194
+
+Long-run stability
+100,000 rows / 1,000 updates / 1 thread:
+- max final weight absolute difference = 8.9614068332632968e-08
+- exact-sigmoid RMSE: v10 0.092411155356220673, v11 0.09241098549818462
+- exact-sigmoid max absolute prediction error: v10 0.12048751259952828, v11 0.1204873415137499
+
+1,000,000 rows / 300 updates / 4 threads:
+- max final weight absolute difference = 2.3911990304492647e-08
+- exact-sigmoid RMSE: v10 0.09895008444887915, v11 0.098950039268860007
+- exact-sigmoid max absolute prediction error: v10 0.1270626263963367, v11 0.12706258095669692
+
+Stopping semantics
+- Training uses the approximate sigmoid in v11 gradient passes.
+- If the approximate percentage-error metric indicates that the target may have been reached, v11 recomputes metrics with the exact existing inference path before accepting the stopping condition.
