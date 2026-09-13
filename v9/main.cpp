@@ -180,11 +180,18 @@ __attribute__((target("avx512f,avx512dq,fma"))) static void processTrainingRange
 }
 
 template<bool UncheckedSigmoid>
-__attribute__((target("avx512f,avx512dq,fma"))) static void processTrainingBlocksAVX512V9(const Dataset &data, size_t startRow, size_t batchSize, size_t firstBlock, size_t lastBlock, const Network &network, ThreadAccumulator &accumulator, bool detailed) {
+__attribute__((target("avx512f,avx512dq,fma"))) static void processTrainingBlocksAVX512V9(const Dataset &data, size_t startRow, size_t batchSize, size_t firstBlock, size_t lastBlock, const Network &network, ThreadAccumulator &accumulator, bool detailed, double percentageLimit) {
     for(size_t block=firstBlock;block<lastBlock;block++) {
         const size_t offset=block*BLOCK_SIZE,rowsInBlock=min(BLOCK_SIZE,batchSize-offset);
-        if(rowsInBlock==BLOCK_SIZE) processTrainingFullTileAVX512V9<true,UncheckedSigmoid>(data,startRow+offset,network,accumulator,detailed);
-        else processTrainingTileAVX512V8<true>(data,startRow+offset,rowsInBlock,network,accumulator,detailed);
+        const bool calculatePercentage=detailed || accumulator.percentageErrorSum<=percentageLimit;
+        if(rowsInBlock==BLOCK_SIZE) {
+            if(calculatePercentage) processTrainingFullTileAVX512V9<true,UncheckedSigmoid>(data,startRow+offset,network,accumulator,detailed);
+            else processTrainingFullTileAVX512V9<false,UncheckedSigmoid>(data,startRow+offset,network,accumulator,false);
+        }
+        else {
+            if(calculatePercentage) processTrainingTileAVX512V8<true>(data,startRow+offset,rowsInBlock,network,accumulator,detailed);
+            else processTrainingTileAVX512V8<false>(data,startRow+offset,rowsInBlock,network,accumulator,false);
+        }
     }
 }
 #undef V9_DECLARE_W1_ACCUMULATORS
@@ -232,6 +239,7 @@ static TrainResult trainParallelRangeV9(const Dataset &data, size_t startRow, si
     vector<ThreadAccumulator> accumulators(config.threads);
     bool stop=false;
     const size_t blockCount=(batchSize+BLOCK_SIZE-1)/BLOCK_SIZE;
+    const double percentageLimit=config.percentageErrorTarget*static_cast<double>(batchSize);
 #pragma omp parallel num_threads(static_cast<int>(config.threads)) shared(stop,result,gradients,network,accumulators)
     {
         const size_t thread=static_cast<size_t>(omp_get_thread_num());
@@ -240,8 +248,8 @@ static TrainResult trainParallelRangeV9(const Dataset &data, size_t startRow, si
         while(true) {
             const bool detailed=(config.logEvery!=0 && result.updates%config.logEvery==0) || result.updates>=config.maxDescents;
             accumulators[thread].clear();
-            if(v9UncheckedSigmoidSafe(bounds,network)) processTrainingBlocksAVX512V9<true>(data,startRow,batchSize,firstBlock,lastBlock,network,accumulators[thread],detailed);
-            else processTrainingBlocksAVX512V9<false>(data,startRow,batchSize,firstBlock,lastBlock,network,accumulators[thread],detailed);
+            if(v9UncheckedSigmoidSafe(bounds,network)) processTrainingBlocksAVX512V9<true>(data,startRow,batchSize,firstBlock,lastBlock,network,accumulators[thread],detailed,percentageLimit);
+            else processTrainingBlocksAVX512V9<false>(data,startRow,batchSize,firstBlock,lastBlock,network,accumulators[thread],detailed,percentageLimit);
 #pragma omp barrier
 #pragma omp single
             stop=finishV9Pass(data,startRow,batchSize,batchIndex,network,config,accumulators,gradients,result,detailed);
