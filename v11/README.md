@@ -1,87 +1,101 @@
 # Simple Neural Network v11
 
-V11 is the first deliberately non-bit-identical optimisation round. It keeps the v10 network architecture, double-precision weights, full-batch momentum update and backpropagation equations, but replaces the expensive vector exponential inside the training sigmoid with a bounded AVX-512 polynomial approximation on selected hot paths.
+V11 is the first deliberately non-bit-identical optimisation round. It keeps the v10 network architecture, double-precision weights, full-batch momentum update, backpropagation equations and gradient-reduction structure, but replaces the expensive vector exponential inside the training sigmoid on selected hot paths.
 
-Inference, final prediction files and target confirmation continue to use the existing exact sigmoid path.
+Inference and target confirmation continue to use the existing exact sigmoid path.
 
 ## Retained change
 
-The v11 training sigmoid uses symmetry, `sigmoid(-x) = 1 - sigmoid(x)`, and approximates only `|x|`:
+The final v11 training sigmoid is deliberately simpler than the earlier multi-region prototype.
 
-- `|x| <= 1`: degree-4 polynomial
-- `1 < |x| <= 4`: degree-8 polynomial
-- `4 < |x| <= 12`: degree-8 polynomial
-- `|x| > 12`: saturate to 0 or 1
+For each AVX-512 vector:
 
-A dense validation grid on `[-20, 20]` gives a maximum absolute sigmoid error below `6.57e-6`. The approximation remains inside `[0, 1]` on that grid.
+- if every lane satisfies `|x| <= 1`, evaluate
+  `0.5 + x * (c1 + x^2 * (c3 + x^2 * c5))`;
+- otherwise fall back to the existing checked libmvec sigmoid for that vector.
 
-On the deterministic million-row benchmark after 100 exact-sigmoid updates, the largest hidden preactivation was about `0.661` and the largest output preactivation about `0.102`, so the short degree-4 common path handles the measured hot workload.
+The retained coefficients are:
+
+- `c1 = 0.24998101634651657`
+- `c3 = -0.020677835421401624`
+- `c5 = 0.0017580292406143272`
+
+A dense 1,000,001-point validation grid on `[-1, 1]` gives maximum absolute sigmoid error about `2.69e-6`. Outside `[-1,1]` the existing sigmoid is used, so this is also the global approximation-error bound apart from ordinary floating-point evaluation error.
+
+The previous broader piecewise-polynomial design was rejected for production because the measured training activations are overwhelmingly central and exact fallback is both simpler and safer.
 
 ## Dispatch
 
-V11 uses the approximate sigmoid only on paths that were benchmarked directly:
+V11 uses the adaptive sigmoid only on production paths benchmarked directly:
 
-- one training thread with at least 50,000 rows: v9-style four-observation forward kernel plus v11 sigmoid
-- exactly four training threads with at least 1,000,000 rows: v10 eight-observation forward kernel plus v11 sigmoid
+- one training thread with at least 50,000 rows: four-observation forward kernel plus v11 sigmoid;
+- exactly four training threads with at least 1,000,000 rows: eight-observation v10 forward kernel plus v11 sigmoid.
 
 All other configurations delegate to v10 unchanged.
 
-The existing AVX-512/libmvec capability gate is retained. This makes v11 an opt-in accelerated path on the same build/environment used by v9 and v10 rather than broadening the platform contract at the same time as changing numerical behaviour.
+The existing AVX-512/libmvec capability gate is retained. Portable builds therefore continue to use the exact historical path.
 
 ## Performance
 
-The v11 release-development benchmark is a paired production-shaped isolation harness. It mirrors the four-row single-thread and eight-row four-thread forward structures and changes the sigmoid implementation while keeping the same synthetic dataset, gradient equations and momentum update. Absolute seconds should not be compared directly with the historical v10 README because the harness bookkeeping is not byte-for-byte the same. The paired percentage reductions are the useful metric.
+The final release-development benchmark was run on the current execution host:
 
-| Rows | Updates | Threads | v10-style median | v11 median | Time reduction | Median paired reduction |
+- AMD EPYC 9V74
+- GCC 14.2.0
+- Linux x86-64
+- AVX-512 available
+- glibc libmvec
+- paired alternating v10-style exact-sigmoid and v11 adaptive-sigmoid runs
+
+Absolute seconds are specific to this runner. The paired reductions are the useful comparison.
+
+| Rows | Updates | Threads | v10-style median | v11 median | Reduction from medians | Median paired reduction |
 |---:|---:|---:|---:|---:|---:|---:|
-| 100,000 | 300 | 1 | 1.231 s | 0.692 s | **43.8%** | **44.0%** |
-| 500,000 | 60 | 1 | 1.040 s | 0.693 s | **33.4%** | **33.6%** |
-| 1,000,000 | 30 | 1 | 1.037 s | 0.701 s | **32.4%** | **31.9%** |
-| 1,000,000 | 100 | 4 | 1.086 s | 0.804 s | **26.0%** | **26.0%** |
+| 100,000 | 100 | 1 | 0.331 s | 0.207 s | **37.7%** | **37.8%** |
+| 500,000 | 40 | 1 | 0.659 s | 0.417 s | **36.8%** | **36.6%** |
+| 1,000,000 | 30 | 1 | 1.014 s | 0.641 s | **36.8%** | **36.7%** |
+| 1,000,000 | 60 | 4 | 0.640 s | 0.394 s | **38.5%** | **30.9%** |
 
-The gain is largest in the single-thread paths because vector exponential represented a larger share of total runtime there. The four-thread path still improves materially after v10's forward-kernel optimisation.
+The four-thread cell is noisier, so the paired-median reduction is the more conservative headline there.
 
 ## Numerical drift
 
-V11 is intentionally not byte-identical to v10. The measured drift is nevertheless very small on the deterministic benchmark when both trained networks are evaluated afterwards with the exact scalar sigmoid.
+V11 is intentionally not byte-identical to v10. The measured drift is nevertheless very small on the deterministic benchmark when both networks are evaluated afterwards with the exact scalar sigmoid.
 
-Examples:
+Release cells:
 
-- 100,000 rows / 300 updates / 1 thread: maximum final weight difference `2.39e-8`
-- 1,000,000 rows / 30 updates / 1 thread: maximum final weight difference `1.98e-9`
-- 1,000,000 rows / 100 updates / 4 threads: maximum final weight difference `7.32e-9`
-- 100,000 rows / 1,000 updates / 1 thread: maximum final weight difference `8.96e-8`
-- 1,000,000 rows / 300 updates / 4 threads: maximum final weight difference `2.39e-8`
+- maximum final-weight absolute difference across the release matrix: `5.12e-9`;
+- largest exact-sigmoid RMSE difference across the release matrix: below `1.0e-8`.
 
-At 100,000 rows / 1,000 updates, exact-sigmoid RMSE was `0.0924111554` for the v10-style baseline and `0.0924109855` for v11. At 1,000,000 rows / 300 updates / four threads it was `0.0989500844` versus `0.0989500393`.
+Longer stability checks:
 
-These are empirical results, not a guarantee for arbitrary datasets. The approximation error bound applies to the sigmoid function itself, while optimisation trajectories can amplify small numerical differences over long training runs.
+- 100,000 rows / 1,000 updates / 1 thread: max weight difference `6.02e-8`; exact RMSE `0.09241115536` vs `0.09241103897`;
+- 1,000,000 rows / 300 updates / 4 threads: max weight difference `1.62e-8`; exact RMSE `0.09895008445` vs `0.09895005305`.
+
+These are empirical trajectory comparisons, not a guarantee for arbitrary datasets.
 
 ## Stopping semantics
 
-V11 does not accept an approximate false positive at the percentage-error target. When an approximate training pass indicates that the target may have been reached, v11 recalculates metrics through the existing exact inference path before accepting the stopping condition. The final maximum-descent report is also recalculated exactly.
+Training gradients and the lightweight percentage metric use the approximate sigmoid on the v11 path. If the approximate metric indicates that the target may have been reached, v11 recomputes the metrics through the existing exact inference path before accepting the stopping condition. Thus the approximation cannot by itself produce a false-positive target success.
 
 ## Rejected architecture change
 
-A row-oriented structure-of-arrays blocked implementation was tested at 64-row and 128-row blocks. It reduces gradient-store traffic and permits reassociation across rows, but this network is only `11 x 16`. The extra scalar-weight broadcasts and horizontal reductions outweighed the storage savings. Even after replacing libmvec with the polynomial sigmoid, the blocked kernel remained slower than the existing hidden-node SIMD layout, so it is not retained.
+A row-oriented structure-of-arrays blocked implementation was tested. It reduces gradient-store traffic and permits reassociation across rows, but this network is only `11 x 16`. The extra scalar-weight broadcasts and horizontal reductions outweighed the storage savings. Even with the fast sigmoid it remained slower than the existing hidden-node SIMD layout, so it is not retained.
 
 ## Build
 
-Portable build, which delegates unsupported paths to v10:
+Portable:
 
 ```text
 g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic v11/main.cpp -o simple_nn_v11
 ```
 
-Accelerated build:
+OpenMP + glibc vector-exp:
 
 ```text
 g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -fopenmp \
     -DSIMPLE_NN_USE_LIBMVEC v11/main.cpp -lm -o simple_nn_v11
 ```
 
-The production source was interface-compiled in both modes before being committed. The exact repository-shaped build is also checked separately before merge.
-
 ## What remains
 
-V11 deliberately stops before changing precision or the optimiser. The next larger performance steps are likely to be FP32/mixed precision, compiler fast-math/reassociation experiments, or changing the optimisation algorithm itself. Those alter the numerical/training contract more substantially and should be measured as separate versions.
+V11 deliberately stops before changing precision or the optimiser. The next larger performance steps are FP32/mixed precision, fast-math/reassociation experiments, and changing the optimisation algorithm itself. Those alter the numerical/training contract more substantially and should be measured as separate versions.
