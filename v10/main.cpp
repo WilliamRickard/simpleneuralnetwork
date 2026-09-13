@@ -49,17 +49,17 @@ __attribute__((target("avx512f,avx512dq,fma"),always_inline)) static inline void
         }
         double*ha=hidden.data()+(row+0)*HIDDEN_NODES,*hb=hidden.data()+(row+1)*HIDDEN_NODES,*hc=hidden.data()+(row+2)*HIDDEN_NODES,*hd=hidden.data()+(row+3)*HIDDEN_NODES;
         double*he=hidden.data()+(row+4)*HIDDEN_NODES,*hf=hidden.data()+(row+5)*HIDDEN_NODES,*hg=hidden.data()+(row+6)*HIDDEN_NODES,*hh=hidden.data()+(row+7)*HIDDEN_NODES;
-        _mm512_storeu_pd(ha,a0);_mm512_storeu_pd(ha+8,a1);_mm512_storeu_pd(hb,b0);_mm512_storeu_pd(hb+8,b1);
-        _mm512_storeu_pd(hc,c0);_mm512_storeu_pd(hc+8,c1);_mm512_storeu_pd(hd,d0v);_mm512_storeu_pd(hd+8,d1v);
-        _mm512_storeu_pd(he,e0);_mm512_storeu_pd(he+8,e1);_mm512_storeu_pd(hf,f0);_mm512_storeu_pd(hf+8,f1);
-        _mm512_storeu_pd(hg,g0);_mm512_storeu_pd(hg+8,g1);_mm512_storeu_pd(hh,h0v);_mm512_storeu_pd(hh+8,h1v);
+        _mm512_store_pd(ha,a0);_mm512_store_pd(ha+8,a1);_mm512_store_pd(hb,b0);_mm512_store_pd(hb+8,b1);
+        _mm512_store_pd(hc,c0);_mm512_store_pd(hc+8,c1);_mm512_store_pd(hd,d0v);_mm512_store_pd(hd+8,d1v);
+        _mm512_store_pd(he,e0);_mm512_store_pd(he+8,e1);_mm512_store_pd(hf,f0);_mm512_store_pd(hf+8,f1);
+        _mm512_store_pd(hg,g0);_mm512_store_pd(hg+8,g1);_mm512_store_pd(hh,h0v);_mm512_store_pd(hh+8,h1v);
     }
     sigmoidVectorFullV9<UncheckedSigmoid>(hidden.data(),BLOCK_SIZE*HIDDEN_NODES);
 
     const __m512d w20=_mm512_loadu_pd(network.wTwo.data()),w21=_mm512_loadu_pd(network.wTwo.data()+8);
     for(size_t row=0;row<BLOCK_SIZE;row++) {
         const double*h=hidden.data()+row*HIDDEN_NODES;
-        const __m512d sum=_mm512_fmadd_pd(_mm512_loadu_pd(h+8),w21,_mm512_mul_pd(_mm512_loadu_pd(h),w20));
+        const __m512d sum=_mm512_fmadd_pd(_mm512_load_pd(h+8),w21,_mm512_mul_pd(_mm512_load_pd(h),w20));
         output[row]=_mm512_reduce_add_pd(sum);
     }
     sigmoidVectorFullV9<UncheckedSigmoid>(output.data(),BLOCK_SIZE);
@@ -67,7 +67,7 @@ __attribute__((target("avx512f,avx512dq,fma"),always_inline)) static inline void
 
     __m512d g20=_mm512_loadu_pd(accumulator.dJdWtwo.data()),g21=_mm512_loadu_pd(accumulator.dJdWtwo.data()+8);V10_DECLARE_W1_ACCUMULATORS;
     for(size_t q=0;q<BLOCK_SIZE;q++) {
-        const double*h=hidden.data()+q*HIDDEN_NODES;const __m512d d=_mm512_set1_pd(deltaThree[q]),a0=_mm512_loadu_pd(h),a1=_mm512_loadu_pd(h+8);
+        const double*h=hidden.data()+q*HIDDEN_NODES;const __m512d d=_mm512_set1_pd(deltaThree[q]),a0=_mm512_load_pd(h),a1=_mm512_load_pd(h+8);
         g20=_mm512_fmadd_pd(a0,d,g20);g21=_mm512_fmadd_pd(a1,d,g21);
         const __m512d delta0=_mm512_mul_pd(_mm512_mul_pd(d,w20),_mm512_mul_pd(a0,_mm512_sub_pd(one,a0))),delta1=_mm512_mul_pd(_mm512_mul_pd(d,w21),_mm512_mul_pd(a1,_mm512_sub_pd(one,a1)));
         const double*x=data.x.rowData(startRow+q);
