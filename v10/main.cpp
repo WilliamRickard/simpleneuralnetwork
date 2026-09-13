@@ -1,6 +1,28 @@
-#define main v9_reference_main
+#include<iostream>
+#include<algorithm>
+#include<array>
+#include<chrono>
+#include<cmath>
+#include<cstddef>
+#include<ctime>
+#include<exception>
+#include<fstream>
+#include<iomanip>
+#if defined(__x86_64__) && defined(__GNUC__)
+#include<immintrin.h>
+#endif
+#include<random>
+#include<stdexcept>
+#include<string>
+#include<vector>
+#ifdef _OPENMP
+#include<omp.h>
+#endif
+
+namespace v10_v9 {
 #include "../v9/main.cpp"
-#undef main
+}
+using namespace v10_v9;
 
 /*
  * Simple Neural Network - v10 exact frontier
