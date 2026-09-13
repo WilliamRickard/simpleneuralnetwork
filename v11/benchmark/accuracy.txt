@@ -1,50 +1,46 @@
 V11 numerical validation
 
-Sigmoid approximation
-- Common path: degree-4 polynomial on |x| <= 1.
-- Middle path: degree-8 polynomial on 1 < |x| <= 4.
-- Outer path: degree-8 polynomial on 4 < |x| <= 12.
-- Saturation outside |x| > 12.
-- Dense-grid validation on [-20, 20]: maximum absolute sigmoid error = 6.566964233945677e-06.
-- Approximation output remains within [0, 1] on the dense grid.
-
-Observed activation range on the deterministic 1,000,000-row benchmark after 100 exact-sigmoid updates
-- maximum |hidden preactivation| = 0.66100956033567548
-- maximum |output preactivation| = 0.10162080657597197
-Thus the degree-4 common path handles the benchmark's measured activations.
+Final sigmoid approximation
+- Common path interval: |x| <= 1.
+- Polynomial: 0.5 + x * (c1 + x^2 * (c3 + x^2 * c5)).
+- c1 = 0.24998101634651657
+- c3 = -0.020677835421401624
+- c5 = 0.0017580292406143272
+- Any AVX-512 vector containing a lane with |x| > 1 falls back to the existing checked libmvec sigmoid for that vector.
+- Dense validation grid with 1,000,001 points on [-1,1]: maximum absolute sigmoid error approximately 2.6831e-6.
+- Outside [-1,1] the approximation is not used, so the historical sigmoid path is retained.
 
 Release-shaped training comparisons, evaluated afterwards with the exact scalar sigmoid
-100,000 rows / 300 updates / 1 thread:
-- max final weight absolute difference = 2.3908057159016671e-08
-- exact-sigmoid RMSE: v10 0.098941920767415772, v11 0.098941875593246964
-- exact-sigmoid max absolute prediction error: v10 0.12706288426622719, v11 0.12706283883188424
+100,000 rows / 100 updates / 1 thread:
+- max final weight absolute difference = 5.120205315289894e-09
+- exact-sigmoid RMSE: v10-style 0.10089776730880001, v11 0.10089775741489837
 
-500,000 rows / 60 updates / 1 thread:
-- max final weight absolute difference = 4.2370658648316351e-09
-- exact-sigmoid RMSE: v10 0.10130335555814832, v11 0.10130334758013815
-- exact-sigmoid max absolute prediction error: v10 0.1294286494408004, v11 0.12942864142080807
+500,000 rows / 40 updates / 1 thread:
+- max final weight absolute difference = 1.931082876938106e-09
+- exact-sigmoid RMSE: v10-style 0.10150205715245775, v11 0.10150205342088260
 
 1,000,000 rows / 30 updates / 1 thread:
-- max final weight absolute difference = 1.9832991082768814e-09
-- exact-sigmoid RMSE: v10 0.10160047155588135, v11 0.10160046782360668
-- exact-sigmoid max absolute prediction error: v10 0.12972853740301021, v11 0.12972853365127074
+- max final weight absolute difference = 1.4066984244109904e-09
+- exact-sigmoid RMSE: v10-style 0.10160047155588135, v11 0.10160046883775101
 
-1,000,000 rows / 100 updates / 4 threads:
-- max final weight absolute difference = 7.3220078750102502e-09
-- exact-sigmoid RMSE: v10 0.1009061305587966, v11 0.100906116762337
-- exact-sigmoid max absolute prediction error: v10 0.12903026059809786, v11 0.12903024672780194
+1,000,000 rows / 60 updates / 4 threads:
+- max final weight absolute difference = 2.9863023442988634e-09
+- exact-sigmoid RMSE: v10-style 0.10130227755393138, v11 0.10130227178321033
 
 Long-run stability
 100,000 rows / 1,000 updates / 1 thread:
-- max final weight absolute difference = 8.9614068332632968e-08
-- exact-sigmoid RMSE: v10 0.092411155356220673, v11 0.09241098549818462
-- exact-sigmoid max absolute prediction error: v10 0.12048751259952828, v11 0.1204873415137499
+- max final weight absolute difference = 6.0210321534137634e-08
+- exact-sigmoid RMSE: v10-style 0.092411155356220673, v11 0.092411038974301460
 
 1,000,000 rows / 300 updates / 4 threads:
-- max final weight absolute difference = 2.3911990304492647e-08
-- exact-sigmoid RMSE: v10 0.09895008444887915, v11 0.098950039268860007
-- exact-sigmoid max absolute prediction error: v10 0.1270626263963367, v11 0.12706258095669692
+- max final weight absolute difference = 1.6240845446269248e-08
+- exact-sigmoid RMSE: v10-style 0.098950084448879150, v11 0.098950053052937387
 
 Stopping semantics
-- Training uses the approximate sigmoid in v11 gradient passes.
-- If the approximate percentage-error metric indicates that the target may have been reached, v11 recomputes metrics with the exact existing inference path before accepting the stopping condition.
+- Training gradients and the lightweight percentage-error metric use the adaptive sigmoid on retained v11 paths.
+- If the approximate percentage-error metric indicates that the target may have been reached, v11 recomputes metrics with the existing exact inference path before accepting target success.
+- Therefore an approximation-only false-positive target crossing is not accepted.
+
+Interpretation
+- The sigmoid function itself has a small bounded pointwise error on the approximation interval.
+- Training trajectories can amplify small numerical differences over many updates, so the weight/RMSE figures above are empirical rather than universal guarantees.
