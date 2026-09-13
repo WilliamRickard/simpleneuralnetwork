@@ -1,6 +1,13 @@
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmisleading-indentation"
+#endif
 #define main v18_embedded_main
 #include "../v18/main.cpp"
 #undef main
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 /* V19: retain v18's fast path, then expand L-BFGS memory for deep convergence. */
 constexpr size_t V19_DEEP_HISTORY=160;
