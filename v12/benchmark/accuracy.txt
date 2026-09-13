@@ -1,0 +1,45 @@
+V12 numerical validation
+
+Retained precision contract
+- Dataset training copy: FP32.
+- Forward activations: FP32.
+- Adaptive sigmoid: FP32 polynomial or FP32 libmvec expf fallback.
+- Backpropagation: FP32.
+- Per-thread gradients: FP32.
+- Cross-thread gradient promotion/reduction: FP64.
+- Master weights: FP64.
+- Momentum state: FP64.
+- Weight update: inherited FP64 v11 update.
+- Final inference and target confirmation: inherited exact FP64 path.
+
+Release cells, v11 versus retained v12
+100,000 rows / 100 updates / 1 thread
+- max weight absolute difference = 8.900950809742625e-11
+- exact RMSE: 0.10089775420564996 vs 0.10089775421759183
+
+500,000 rows / 40 updates / 1 thread
+- max weight absolute difference = 1.6509654754415237e-10
+- exact RMSE: 0.10150205221139864 vs 0.10150205220458540
+
+1,000,000 rows / 30 updates / 1 thread
+- max weight absolute difference = 7.673386370754542e-10
+- exact RMSE: 0.10160046795683869 vs 0.10160046794690318
+
+1,000,000 rows / 60 updates / 4 threads
+- max weight absolute difference = 3.189531971869997e-11
+- exact RMSE: 0.10130226991232164 vs 0.10130226990253990
+
+Long-run stability
+100,000 rows / 1,000 updates / 1 thread
+- max weight absolute difference = 1.3331427628493486e-10
+- exact RMSE: 0.092411000690721209 vs 0.092411000688924314
+
+1,000,000 rows / 300 updates / 4 threads
+- max weight absolute difference = 4.501439498927340e-11
+- exact RMSE: 0.098950042842125011 vs 0.098950042833975141
+
+Rejected full-FP32 master state
+- Release weight drift ranged roughly 9.60e-8 to 3.40e-7.
+- 100k / 1,000 updates drift = 3.4560384798293375e-6.
+- 1m / 300 updates / 4 threads drift = 1.0531368090371807e-6.
+- Runtime was not materially better than the retained mixed path.
