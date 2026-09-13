@@ -1,0 +1,9 @@
+Peak resident memory, 1,000,000 rows, 1 update, 4 threads
+Benchmark environment: Intel Xeon Platinum 8573C, 5 exposed cores
+
+v7 maximum RSS: 95,488 KiB
+v8 maximum RSS: 95,616 KiB
+
+Difference: +128 KiB (about 0.13%), effectively unchanged.
+
+Both runs used OMP_PROC_BIND=close, OMP_PLACES=cores and taskset -c 0-3.
