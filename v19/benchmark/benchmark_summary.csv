@@ -1,0 +1,6 @@
+source,rows,variant,target_percent,accepted_updates,objective_gradient_evaluations,line_search_evaluations,final_confirmation_passes,total_row_passes,wall_seconds,final_exact_pe_percent,final_objective,reached_target
+numpy_fp64,20000,history_10,0.005,3000,4308,4307,1,4309,40.71186666500034,0.00623261684314541,7.07638734870962e-10,false
+numpy_fp64,20000,staged_10_to_160,0.001,3064,3363,3362,1,3364,37.63687922999998,0.000998136198094869,1.2538008068108543e-11,true
+cpp_screen,100000,staged_10_to_160,0.001,,3197,,,,,0.00099488,,true
+cpp_screen,100000,history_10,0.005,2000,2881,,,,,0.00805,,false
+cpp_screen,1000000,staged_10_to_160,0.02,,100,,,,,,,true

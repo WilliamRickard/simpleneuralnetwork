@@ -1,0 +1,69 @@
+V19 deep-convergence experiments
+
+Starting point
+- v18 uses scale-aware curvature acceptance and history 10.
+- v18 preserves the fast path but deep convergence becomes expensive around 0.01%.
+
+Post-v18 history screen
+- 20k rows, history 10, 0.005% target, 3000 accepted-update cap: target missed; ~0.00623% final PE.
+- Larger histories materially improved the deep tail only after the v18 curvature fix.
+- History 80 crossed 0.005% in screening far earlier than history 10.
+- History 160 was the best retained deep cap after sensitivity checks against 120 and 192.
+- History 192 did not improve the 100k 0.001% screen: ~3516 evaluations versus ~3197 for history 160.
+
+Stage threshold screen
+- Keep history 10 above 0.05% and expand only for deeper targets.
+- Entering at 0.05% materially outperformed entering at 0.02% or 0.01% on the 20k 0.001% screen.
+- The deep stage is sticky once entered so a temporary PE fluctuation cannot throw away accumulated deep curvature information.
+
+Independent FP64 re-run
+- Deterministic 20k dataset using the documented generating weights and initial weights.
+- Objective: 0.5 * mean squared error.
+- Gradient: exact FP64 algebra for the 11 -> 16 -> 1 sigmoid network.
+- Line search: Armijo c1=1e-4, initial step 1, halving, at most 20 trial evaluations.
+- Curvature: s.y > 0 and s.y > 1e-8 * ||s|| * ||y||.
+
+history 10 baseline, target 0.005%
+- accepted updates: 3000 cap
+- objective/gradient evaluations: 4308
+- line-search evaluations: 4307
+- final confirmation passes: 1
+- total row passes: 4309
+- final PE: 0.00623261684314541%
+- final objective: 7.07638734870962e-10
+- rejected curvature pairs: 0
+- non-descent resets: 0
+
+staged history 10 -> 160 at 0.05%, target 0.001%
+- accepted updates: 3064
+- objective/gradient evaluations: 3363
+- line-search evaluations: 3362
+- final confirmation passes: 1
+- total row passes: 3364
+- final PE: 0.000998136198094869%
+- final objective: 1.2538008068108543e-11
+- rejected curvature pairs: 0
+- non-descent resets: 0
+- evaluations to 3.9%: 3
+- evaluations to 1%: 12
+- evaluations to 0.1%: 18
+- evaluations to 0.05%: 19
+- evaluations to 0.02%: 97
+- evaluations to 0.01%: 210
+- evaluations to 0.005%: 537
+- evaluations to 0.001%: 3363
+
+Earlier C++ screening
+- 100k staged 10 -> 160 reached ~0.00099488% in ~3197 evaluations.
+- 100k history 10 missed 0.005% after 2000 accepted updates / ~2881 evaluations, ending around 0.00805%.
+- 1m staged 10 -> 160 crossed 0.02% at ~100 evaluations.
+- 1m was ~0.00563% after 400 accepted updates and ~0.00529% after 500.
+- Long-tail 1m wall timings were too variable in the available execution environment for a defensible timing comparison, so no 1m timing speedup is claimed.
+
+Diagnosis
+- Curvature rejection is not the active limiter in the retained 20k run.
+- Non-descent resets are not the active limiter.
+- Armijo generally accepts near-full steps in the useful deep trajectory.
+- W1 and W2 gradient norms remain of comparable order.
+- Stored deep steps become redundant: the 160-step history had effective numerical rank around 97 in one 0.001% conditioning check, with pairwise step cosines approaching ~0.98.
+- The next likely improvement is history quality/compression rather than a more expensive generic line search.
