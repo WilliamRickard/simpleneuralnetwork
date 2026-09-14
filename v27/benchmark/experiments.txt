@@ -1,0 +1,78 @@
+V27 exact Gauss-Newton refresh experiments
+==========================================
+
+Production baseline
+-------------------
+Master: 7f75f8583128db885227630cf303946e77eb74b2
+V26 main blob: 9bd110678b978b230e65b20954b384b5a766339c
+
+Finding
+-------
+V25 fixed evaluator worker selection, but gaussNewtonScaleV20 still uses evaluationThreadsV15. Below 50,000 rows this forces Gauss-Newton diagonal construction to one worker.
+
+Rejected: direct threaded long-double partials
+---------------------------------------------
+Using four scalar row slices makes the GN pass faster but changes the long-double summation grouping. The diagonal and subsequent optimiser trajectory therefore change. Synthetic update counts moved in both directions. Rejected because v27 has an exact alternative.
+
+Rejected: vector double accumulation
+------------------------------------
+Accumulating the diagonal in AVX-512 double vectors was fast but changes arithmetic materially. Synthetic and Wine paths remained viable, but the final parameters and some update counts changed. Rejected.
+
+Rejected: persistent scratch
+----------------------------
+Reusing the approximately 12.6 MB row-Jacobian scratch buffer across refreshes retained exact arithmetic but did not improve end-to-end timing consistently. The retained design limits scratch lifetime to one refresh.
+
+Retained exact design
+---------------------
+For sub-50k deep workloads:
+
+- compute each row's 192 Jacobian doubles in parallel;
+- AVX-512 lanes represent independent hidden nodes;
+- preserve the k=0..10 first-layer accumulation order;
+- use separate multiply/add with fp-contract=off;
+- retain scalar exp;
+- after each block, reduce rows serially in the original order;
+- keep the original long-double cast, square and accumulation;
+- use an 8,192-row bounded scratch block;
+- delegate 50k+ workloads directly to v26.
+
+Exactness evidence
+------------------
+Focused GN scale tests at 5k, 10k, 20k, 50k and 100k produced zero differing scale doubles.
+
+Full optimiser synthetic comparisons at 5k, 10k and 20k, each at 0.001% and 0.0005%, produced identical:
+
+- accepted update counts;
+- evaluator call counts;
+- rejected line-search trials;
+- final percentage error;
+- final objective;
+- all 192 final parameter bits.
+
+A wider experimental exact-SIMD path was also tested at 50k and 100k and remained bit-identical, but the production v27 wrapper deliberately delegates those sizes to v26 because their inherited GN pass is already parallel.
+
+Real Wine validation
+--------------------
+The fixed 133-row real Wine training set was repeated 100 times to 13,300 rows. At both deep targets, v26 and the retained v27 candidate had identical update/evaluation/reject counts, final PE/objective, all final parameters, hold-out RMSE and hold-out classification accuracy.
+
+Ten rotating-order paired timings gave:
+
+- 0.001%: 7/10 wins, median speedup 1.033048x, p10 0.951499x, p90 1.093018x;
+- 0.0005%: 7/10 wins, median speedup 1.025271x, p10 0.964738x, p90 1.092728x.
+
+Synthetic rotating-order timing
+-------------------------------
+Fifteen paired runs per changed case are recorded in benchmark_summary.csv. The host is noisy at the four-CPU cgroup quota, so medians plus p10/p90 are retained.
+
+Notable medians:
+
+- 5k / 0.001%: 1.217667x;
+- 5k / 0.0005%: 0.993858x, effectively neutral within host noise;
+- 10k / 0.001%: 1.028991x;
+- 10k / 0.0005%: 1.010834x;
+- 20k / 0.001%: 1.083714x;
+- 20k / 0.0005%: 1.013597x.
+
+Interpretation
+--------------
+The optimisation removes a fixed amount of pre-dense GN work. Its percentage effect is therefore larger for the 0.001% target and smaller for the longer 0.0005% dense-tail runs. The important non-regression property is exact trajectory preservation, unlike the rejected direct-threading candidate.
