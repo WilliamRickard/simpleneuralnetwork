@@ -1,0 +1,25 @@
+name: v21 compile
+
+on:
+  pull_request:
+    paths:
+      - 'v21/**'
+      - 'v20/**'
+      - '.github/workflows/v21-compile.yml'
+  push:
+    paths:
+      - 'v21/**'
+      - 'v20/**'
+      - '.github/workflows/v21-compile.yml'
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Portable C++11 build
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror v21/main.cpp -o /tmp/v21-portable
+      - name: Accelerated C++11 build
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC v21/main.cpp -lmvec -o /tmp/v21-accelerated
+      - name: Refresh benchmark compile
+        run: g++ -std=c++11 -O3 -mavx2 -mfma -fopenmp -Wall -Wextra -Wpedantic -Werror v21/benchmark/refresh_benchmark.cpp -lmvec -o /tmp/v21-refresh-benchmark
