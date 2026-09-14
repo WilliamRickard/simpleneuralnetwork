@@ -1,0 +1,101 @@
+V23 dense-initialisation investigation
+======================================
+
+Starting point
+--------------
+V22 follows v21 until PE <= 0.015%, then creates a full 192x192 inverse-BFGS
+matrix. Its dense seed is H0 = gamma D, where D is v21's current positive
+Gauss-Newton diagonal scale and the v22 scalar is the usual identity-seed
+L-BFGS choice gamma = (s^T y) / (y^T y).
+
+Adaptive-switch investigation
+-----------------------------
+The original v23 research objective was to replace the fixed 0.015% switch with
+a state-dependent trigger. The following inexpensive signals were screened:
+- maximum pairwise step cosine / history redundancy;
+- secant Rayleigh-quotient spread as a conditioning proxy;
+- numerical effective rank of the step history;
+- accepted-history growth since the 0.0225% GN refresh;
+- held-out secant prediction quality for candidate L-BFGS memory lengths;
+- relative secant-prediction error of L-BFGS and a shadow dense-BFGS model.
+
+None provided a robust common transition rule. Redundancy saturated too early,
+conditioning and numerical rank were scale-sensitive, history-growth thresholds
+varied by row count, and held-out secant effectiveness was non-stationary.
+The fixed 0.015% v22 switch remained robust on both release and unseen scales.
+
+Rejected dense-history variants
+-------------------------------
+A shadow dense matrix updated from the 0.0225% refresh onward was worse than a
+fresh v22 handover. Replaying even a few old L-BFGS secant pairs into the newly
+initialised dense matrix also usually worsened the tail. V23 therefore retains
+v22's fresh dense handover.
+
+Scale-aware dense seed
+----------------------
+The useful improvement was in the dense seed itself. The usual v22 scalar is
+appropriate to H0 = gamma I, but v22 actually uses H0 = gamma D with a nontrivial
+positive diagonal D.
+
+V23 chooses gamma by balancing the newest accepted secant in the metric induced
+by D:
+
+    s^T H0^-1 s = y^T H0 y,
+    H0 = gamma D.
+
+Solving gives
+
+    gamma = sqrt((s^T D^-1 s) / (y^T D y)).
+
+This symmetric scale is positive whenever D is positive and the newest secant is
+nonzero. If the computation is invalid, production falls back to v22's scalar.
+No extra training-data pass is required.
+
+Alternative scalars screened
+-----------------------------
+The research harness also tested:
+- standard v22: (s^T y)/(y^T y);
+- weighted least-squares: (s^T y)/(y^T D y);
+- a D-weighted regression form based on D y.
+
+The metric-balanced square-root scalar was materially stronger across the
+release cases. The weighted least-squares alternative also helped, but by much
+less.
+
+Switch rescan
+-------------
+With the new scalar, switch points 0.0200%, 0.0175%, 0.0150%, 0.0125% and
+0.0100% were rescreened. Individual cases have slightly different local optima,
+but 0.015% remains the most robust common transition across 5k, 20k and 100k and
+both retained targets. V23 therefore does not add another switch parameter.
+
+Retained strict results
+-----------------------
+0.001% target:
+  5k:     793 -> 578 passes  (27.1% reduction)
+  20k:    857 -> 613 passes  (28.5% reduction)
+  100k:   822 -> 558 passes  (32.1% reduction)
+
+0.0005% target:
+  5k:    1367 -> 1045 passes (23.6% reduction)
+  20k:   1607 -> 1268 passes (21.1% reduction)
+  100k:  1804 -> 987 passes  (45.3% reduction)
+
+Unseen-row validation
+---------------------
+The 0.015% rule and v23 scalar were also tested without retuning on 10k and 50k:
+  10k / 0.001%:  1380 -> 781  (43.4% reduction)
+  50k / 0.001%:  1264 -> 752  (40.5% reduction)
+  10k / 0.0005%: 2158 -> 1341 (37.9% reduction)
+  50k / 0.0005%: 2441 -> 2255 (7.6% reduction)
+
+The 50k ultra-deep gain is smaller but remains positive. No tested retained or
+unseen case regressed.
+
+Reproducibility
+---------------
+benchmark/scale_aware_gamma_benchmark.cpp uses the deterministic 11-16-1 v21
+problem, five deterministic worker slices, FP64 state and AVX2/libmvec. It
+reproduces the merged v22 benchmark counts exactly in gamma mode 0. Gamma mode 3
+is the retained v23 metric-balanced scale. Strict retained builds use -O3 and do
+not use -ffast-math.
