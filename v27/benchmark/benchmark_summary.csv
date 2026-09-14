@@ -1,0 +1,13 @@
+workload,rows,target,pairs,wins,median_speedup,p10_speedup,p90_speedup,trajectory_equal,quality_equal,notes
+synthetic,5000,0.001,15,13,1.217667,1.000498,1.398040,true,true,rotating-order full optimiser
+synthetic,5000,0.0005,15,7,0.993858,0.819327,1.083969,true,true,median effectively neutral on noisy host
+synthetic,10000,0.001,15,9,1.028991,0.863651,1.266248,true,true,rotating-order full optimiser
+synthetic,10000,0.0005,15,8,1.010834,0.862895,1.099523,true,true,rotating-order full optimiser
+synthetic,20000,0.001,15,13,1.083714,0.977421,1.321373,true,true,rotating-order full optimiser
+synthetic,20000,0.0005,15,9,1.013597,0.871128,1.103704,true,true,rotating-order full optimiser
+wine_stress,13300,0.001,10,7,1.033048,0.951499,1.093018,true,true,133 real Wine training rows repeated 100x; hold-out RMSE and accuracy identical
+wine_stress,13300,0.0005,10,7,1.025271,0.964738,1.092728,true,true,133 real Wine training rows repeated 100x; hold-out RMSE and accuracy identical
+production_fallback,50000,0.001,0,0,1.000000,1.000000,1.000000,true,true,v27 delegates directly to v26 at 50000 rows and above
+production_fallback,50000,0.0005,0,0,1.000000,1.000000,1.000000,true,true,v27 delegates directly to v26 at 50000 rows and above
+production_fallback,100000,0.001,0,0,1.000000,1.000000,1.000000,true,true,v27 delegates directly to v26 at 50000 rows and above
+production_fallback,100000,0.0005,0,0,1.000000,1.000000,1.000000,true,true,v27 delegates directly to v26 at 50000 rows and above
