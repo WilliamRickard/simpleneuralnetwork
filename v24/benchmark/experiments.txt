@@ -1,0 +1,80 @@
+V24 dense-tail line-search investigation
+========================================
+
+Starting point
+--------------
+V23 keeps Armijo backtracking from v19. Each iteration first evaluates alpha=1
+and, after a rejection, repeatedly halves alpha. Profiling on 100k / 0.0005%
+showed roughly 97% of optimiser time inside full objective/gradient evaluations,
+so eliminating rejected full-data trials is more valuable than micro-optimising
+the 192 x 192 dense BFGS algebra.
+
+Retained change
+---------------
+V24 is identical to v23 before the existing 0.015% dense-BFGS handover.
+In the dense tail only, the first Armijo trial remains alpha=1. After a rejected
+trial at alpha, v24 uses the one-point quadratic estimate
+
+    alpha_q = -gTp * alpha^2 /
+              (2 * (f(theta + alpha p) - f(theta) - alpha gTp)).
+
+When the model is finite and positive, the next trial is safeguarded to
+
+    0.08 * alpha <= alpha_next <= 0.50 * alpha.
+
+If the quadratic model is invalid, v24 falls back to v23's alpha <- 0.5 alpha.
+
+Why dense-tail only
+-------------------
+Applying quadratic interpolation during the preceding L-BFGS phase was not
+robust. It could accept smaller steps that reduced immediate backtracking but
+increased the number of subsequent accepted updates. Restricting interpolation
+to the dense tail preserved v23's pre-handover trajectory and was robust across
+5k, 10k, 20k, 50k and 100k row screens.
+
+Rejected ideas screened during v24 research
+-------------------------------------------
+- Precomputed 100/y targets: removed vector division but added another memory
+  stream; no reliable wall-clock gain.
+- Reusing/growing the previous accepted Armijo step: fewer rejected trials but
+  materially more accepted updates; 5k / 0.001% regressed from 578 to 717 total
+  row-pass equivalents in the initial screen.
+- Quadratic interpolation throughout both L-BFGS and dense BFGS: trajectory
+  sensitive and not robust on 5k.
+- Full Gauss-Newton / Levenberg-Marquardt tail: converged in few LM iterations
+  when switched late, but building a full 192 x 192 J^T J was too expensive in
+  the tested implementation, especially for 20k / 0.0005%.
+- PGO: changed deterministic optimiser trajectories in the screening build, so
+  it was not retained as a source-independent release optimisation.
+- LTO / -march=native: modest timing potential, but kept outside v24 so the
+  source-level algorithmic change can be benchmarked independently.
+
+Deterministic results
+---------------------
+All ten retained/research row-count/target combinations improved in total
+full-row-pass equivalents. Release-scale results:
+
+  5k / 0.001%:      578 -> 505  (-12.6%)
+  20k / 0.001%:     613 -> 551  (-10.1%)
+  100k / 0.001%:    558 -> 500  (-10.4%)
+  5k / 0.0005%:    1045 -> 996  (-4.7%)
+  20k / 0.0005%:   1268 -> 1183 (-6.7%)
+  100k / 0.0005%:   987 -> 926  (-6.2%)
+
+Unseen 10k and 50k cases also improved without retuning.
+
+Harness reproducibility note
+----------------------------
+A cleanup rewrite of the standalone harness changed GCC code generation enough
+to move the v23 5k / 0.001% control from 578 to 675 passes despite mathematically
+equivalent source. The release benchmark therefore preserves the exact known-good
+harness structure that recompiles byte-for-byte and reproduces the published v23
+controls. This is deliberate: near the deep numerical tail, tiny floating-point
+trajectory changes can amplify into different BFGS paths.
+
+Wall-clock exploration
+----------------------
+Five paired repetitions were collected for the six release cases. Shared-host
+noise is large enough that individual pairs can reverse even when deterministic
+row-pass counts improve. Deterministic row-pass equivalents therefore remain the
+release metric.
