@@ -1,0 +1,75 @@
+V26 profiling and dense-algebra experiments
+===========================================
+
+Retained candidate
+------------------
+Use a column-major 192x192 dense inverse-Hessian after the existing v25 dense
+handover. AVX-512 lanes represent independent matrix rows, while each lane
+accumulates j=0..191 in the same order as the scalar v22 implementation.
+
+Required exactness controls:
+- no horizontal SIMD reduction for H*x;
+- separate multiply then add, not FMA;
+- function-local optimize("fp-contract=off") on AVX-512 helpers;
+- keep dotV14, curvature checks, y^T H y and BFGS coefficients on the inherited
+  generic code path.
+
+The diagonal v23 seed is representation-independent, so no transpose is needed
+at initialisation or reset.
+
+Exactness results
+-----------------
+Focused benchmark:
+- initial dense direction: 0 differing doubles;
+- one inverse-BFGS update: 0 differing matrix elements;
+- after 100 repeated direction/update cycles: still 0 differences.
+
+Production-style full optimiser harness, both deep targets at 5k/10k/20k/
+50k/100k:
+- updates identical;
+- evaluator/reject counts identical;
+- final percentage error identical;
+- final objective identical.
+
+Five-run focused timing median
+------------------------------
+scalar direction: 18.257037750 us
+v26 direction:     7.586156083 us
+speedup:           2.3192x
+
+scalar update:     35.618068083 us
+v26 update:        20.195069667 us
+speedup:           1.7758x
+
+combined dense algebra: 1.9513x faster.
+
+Production impact model
+-----------------------
+The standalone end-to-end research harness uses an AVX2 evaluator and can incur
+AVX2/AVX-512 transition effects. Its wall times are therefore not used as
+production speed claims.
+
+The retained component model combines measured production-style AVX-512
+objective/gradient pass times with the dense timings above. Since trajectories
+are exact, pass counts are unchanged. Estimated runtime reductions range from
+about 13-15% at 5k, 8-9% at 10k, 4-5% at 20k, 2% at 50k and about 1% at 100k.
+See exact_dense_summary.csv.
+
+Earlier profiling and rejected candidates
+-----------------------------------------
+1. Persistent OpenMP evaluator team:
+   entering a warm four-thread region cost only about 1.5-2.6 us. This is about
+   1-2% of a 5k evaluator pass and negligible at 100k, so it is not the main
+   v26 opportunity.
+2. Remove PE/max-error bookkeeping:
+   effects were noisy and mostly single-digit; reduce-max was not better.
+3. Faster sigmoid/exp:
+   a cheap timing-only sigmoid suggested 35-40% evaluator upside, but no
+   accurate faster vector-exp backend was available in the installed toolchain.
+   Prior exp2 substitution changed optimiser trajectories and remains rejected.
+4. Row-major AVX-512 dense algebra:
+   horizontal reductions/FMA gave around 2.2x dense speed but changed the
+   numerical trajectory. Rejected.
+5. Column-major AVX-512 without fp-contract=off:
+   direction initially matched, but the BFGS update differed by around one ulp
+   in many cells and divergence accumulated. Rejected.
