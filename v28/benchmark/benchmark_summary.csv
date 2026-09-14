@@ -1,0 +1,14 @@
+workload,rows,target,measurement,median_speedup,exact_trajectory,quality_equal,notes
+kernel,100000,,single_worker_fresh,1.058883,true,true,425-case fresh exactness benchmark; later contended host
+kernel,5000,,single_worker_cooled,1.094,true,true,earlier cooled evaluator measurement
+kernel,10000,,single_worker_cooled,1.162,true,true,earlier cooled evaluator measurement
+kernel,20000,,single_worker_cooled,1.113,true,true,earlier cooled evaluator measurement
+kernel,50000,,single_worker_cooled,1.090,true,true,earlier cooled evaluator measurement
+kernel,100000,,single_worker_cooled,1.059,true,true,earlier cooled evaluator measurement
+wine_stress,13300,0.001,full_training_7_pairs,1.105,true,true,hold-out RMSE and 84.44% classification accuracy identical
+wine_stress,13300,0.0005,full_training_7_pairs,1.078,true,true,hold-out RMSE and 84.44% classification accuracy identical
+synthetic,5000,0.0005,full_training_3_pairs,1.03,true,true,positive but noisy
+synthetic,10000,0.0005,full_training_3_pairs,1.08,true,true,positive but noisy
+synthetic,20000,0.0005,full_training_3_pairs,1.21,true,true,host-noise inflated; not expected gain
+synthetic,50000,0.0005,full_training_3_pairs,1.17,true,true,host-noise inflated; not expected gain
+synthetic,100000,0.0005,full_training_3_pairs,1.06,true,true,positive conservative-size result
