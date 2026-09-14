@@ -1,0 +1,62 @@
+V25 evaluator-parallelism experiments
+=====================================
+
+Retained candidate
+------------------
+Problem: evaluationThreadsV15 forces all row counts below 50,000 to one worker.
+Retained policy for deep targets <= 0.001%:
+  min rows per evaluator worker = 1,024
+  requested workers = caller request, or 4 when request is 0
+  maximum workers = inherited V15 cap of 4
+  actual workers = min(requested/capped, max(1, rows / 1,024))
+
+This keeps tiny datasets serial while enabling four workers from 4,096 rows upward.
+The objective, gradient formula, AVX-512 row kernel, v24 line search and optimiser
+mathematics are unchanged. Parallel reduction grouping changes floating-point
+rounding, so exact trajectory/pass identity is not a release requirement.
+
+Paired synthetic timing medians
+-------------------------------
+5k / 0.001%:   0.273483281 s -> 0.076541622 s, 3.5730x
+5k / 0.0005%:  0.453019177 s -> 0.165684886 s, 2.7342x
+10k / 0.001%:  0.341351246 s -> 0.141802692 s, 2.4072x
+10k / 0.0005%: 0.592412493 s -> 0.246448314 s, 2.4038x
+20k / 0.001%:  0.475106337 s -> 0.184625186 s, 2.5734x
+20k / 0.0005%: 1.022178522 s -> 0.365318290 s, 2.7980x
+
+Current v24 already selects four workers at 50k and 100k. Profiling those row
+counts was useful for confirming scaling, but those measurements are not v25
+release gains and are intentionally omitted from the comparison table.
+
+Real Wine timing stress
+-----------------------
+The fixed 133-row real Wine training split was repeated 100 times to create a
+13,300-row timing workload without synthesising feature values.
+
+0.001%:  1.185581219 s -> 0.392066667 s, 3.0239x median, v25 won 5/5 pairs
+0.0005%: 1.158539332 s -> 0.339875913 s, 3.4087x median, v25 won 5/5 pairs
+
+The original 133-row Wine workload remains single-threaded under the retained
+1,024-row threshold and is therefore unchanged by v25.
+
+Quality sensitivity
+-------------------
+A separate forced-four-worker test over 10 stratified 133-row Wine splits was
+used only to check sensitivity to parallel reduction order. Mean hold-out
+accuracy was 76.89% with one worker and 78.22% with four workers. Pairwise
+accuracy outcomes were 4 wins, 4 ties and 2 losses for four workers. This is not
+claimed as a predictive-quality improvement.
+
+Rejected candidates
+-------------------
+1. AVX-512 rcp14 + two Newton refinements in sigmoid:
+   evaluator differences around 1e-13, but slower than the existing divide.
+2. AVX-512 reduce-max for maximum percentage error:
+   no consistent runtime benefit.
+3. libmvec exp2 with log2(e) scaling:
+   faster isolated transcendental path, but changed full optimiser trajectories
+   enough to give mixed end-to-end results. Rejected for v25.
+4. Always use four workers:
+   fastest on many measured cases, including small Wine, but unnecessarily
+   changes tiny-dataset reduction order. Replaced by conservative 1,024 rows per
+   worker adaptive policy.
