@@ -60,6 +60,7 @@ static TrainResult trainRangeV21(const Dataset&data,size_t startRow,size_t batch
         if(deepStage&&!scaleReady){
             scale=gaussNewtonScaleV20(data,startRow,batchSize,network,parameters,config.threads);
             scaleReady=true;
+            refreshStage=refreshStageV21(current.metrics.percentageError,config.percentageErrorTarget);
         }
         if(scaleReady){
             refreshScaleV21(data,startRow,batchSize,network,parameters,config,
