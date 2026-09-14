@@ -1,6 +1,9 @@
 name: v24 real wine benchmark
 
 on:
+  push:
+    branches:
+      - benchmark-v24-real-wine
   pull_request:
     paths:
       - '.github/workflows/v24-real-wine-benchmark.yml'
