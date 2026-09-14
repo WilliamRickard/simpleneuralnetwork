@@ -94,6 +94,38 @@ The harness reduction order differs from the production AVX-512 evaluator, so
 these are paired research comparisons rather than exact production iteration
 claims.
 
+## Paired wall-clock benchmark
+
+A separate timing benchmark ran 10 measured repetitions of v21, v22 and v23 for
+each retained row-count/target case, after one discarded warm-up. Variant order
+rotated between repetitions so the three versions were measured adjacent in
+time rather than in long version-specific blocks.
+
+The benchmark host exposed five Intel Xeon Platinum 8573C cores. The harness was
+compiled with `g++ 14.2.0`, C++11, `-O3 -mavx2 -mfma -fopenmp` and libmvec,
+without `-ffast-math`. Timings use `std::chrono::steady_clock` and the same five
+deterministic worker slices as the release screen.
+
+Median optimiser times, with p10-p90 in brackets:
+
+| Rows | Target | v21 | v22 | v23 | v23 vs v22 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 5,000 | 0.001% | 0.358 s [0.336, 0.429] | 0.234 s [0.195, 0.249] | **0.140 s [0.121, 0.149]** | **1.71x** |
+| 20,000 | 0.001% | 1.020 s [0.976, 1.190] | 0.763 s [0.710, 1.034] | **0.512 s [0.468, 0.566]** | **1.48x** |
+| 100,000 | 0.001% | 3.717 s [3.540, 4.047] | 2.908 s [2.874, 3.472] | **1.991 s [1.935, 2.135]** | **1.49x** |
+| 5,000 | 0.0005% | 0.718 s [0.679, 0.827] | 0.392 s [0.376, 0.636] | **0.283 s [0.263, 0.343]** | **1.42x** |
+| 20,000 | 0.0005% | 3.289 s [3.197, 3.724] | 1.341 s [1.256, 2.245] | **1.045 s [1.005, 1.066]** | **1.30x** |
+| 100,000 | 0.0005% | 9.453 s [9.207, 11.423] | 6.822 s [6.367, 7.252] | **3.548 s [3.413, 4.088]** | **1.88x** |
+
+V23's paired median wall-clock speedup over v22 ranges from **1.30x to 1.88x**
+and over v21 from **1.85x to 3.12x**. Even the p10 paired v23-v22 speedup is
+above 1.18x in every retained case.
+
+The host is shared rather than CPU-isolated, so wall-clock data are inherently
+noisier than deterministic row-pass counts. No slow observations were removed.
+See `benchmark/timing_methodology.md`, `timing_raw.csv`, `timing_summary.csv` and
+`timing_speedups.csv` for the full methodology and results.
+
 ## Validation
 
 The exact production source was compiled locally against the inherited v22
@@ -103,6 +135,10 @@ interface in portable and accelerated C++11 configurations with
 `benchmark/scale_aware_gamma_benchmark.cpp` also compiles under the strict
 warning policy with AVX2, FMA, OpenMP and libmvec, and reproduces all retained
 v22/v23 counts in `benchmark_summary.csv`.
+
+`benchmark/timing_benchmark.cpp` compiles under the same strict AVX2/FMA/OpenMP/
+libmvec warning policy and reproduces the deterministic pass counts while adding
+only `std::chrono::steady_clock` instrumentation.
 
 GitHub Actions status must be checked separately. Local compilation is not a
 claim that repository CI ran.
