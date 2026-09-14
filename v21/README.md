@@ -47,7 +47,7 @@ For targets above 0.001%, v21 calls `trainRangeV20` directly. There is no v21 re
 
 ## Strict deterministic screening
 
-The retained policy was tested with `benchmark/refresh_benchmark.cpp`, a four/five-worker FP64 AVX2/libmvec implementation of the deterministic 11-16-1 benchmark. Results below were compiled with `-O3` and without `-ffast-math`. The screening reduction order differs from the production AVX-512 evaluator, so exact production iteration counts are not claimed.
+The retained policy was tested with `benchmark/refresh_benchmark.cpp`, a multi-worker FP64 AVX2/libmvec implementation of the deterministic 11-16-1 benchmark. Results below were compiled with `-O3` and without `-ffast-math`. The screening reduction order differs from the production AVX-512 evaluator, so exact production iteration counts are not claimed.
 
 Every objective/gradient evaluation is counted as one full row pass. Every Gauss-Newton diagonal computation is also counted as one full row pass.
 
