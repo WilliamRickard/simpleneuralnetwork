@@ -1,0 +1,146 @@
+name: v24 real wine benchmark
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v24-real-wine-benchmark.yml'
+      - 'v23/**'
+      - 'v24/**'
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare real Wine data and deterministic weights
+        run: |
+          python3 - <<'PY'
+          import csv, math, urllib.request
+          url = 'https://raw.githubusercontent.com/scikit-learn/scikit-learn/c832691b42ea97208bb90fe4dba11679dbc5c081/sklearn/datasets/data/wine_data.csv'
+          rows = list(csv.reader(urllib.request.urlopen(url).read().decode().splitlines()))
+          data = [[float(v) for v in r[:13]] + [int(r[13])] for r in rows[1:]]
+          by_class = {}
+          for i, r in enumerate(data): by_class.setdefault(r[13], []).append(i)
+          test = set()
+          for c, ids in sorted(by_class.items()):
+              m = round(len(ids) * 0.25)
+              for k in range(m):
+                  pos = round(k * (len(ids)-1) / max(1, m-1))
+                  test.add(ids[pos])
+          train = [i for i in range(len(data)) if i not in test]
+          test_ids = [i for i in range(len(data)) if i in test]
+          assert len(train) == 133 and len(test_ids) == 45
+          mu=[]; sd=[]
+          for j in range(11):
+              vals=[data[i][j] for i in train]
+              m=sum(vals)/len(vals); s=(sum((x-m)**2 for x in vals)/len(vals))**0.5
+              mu.append(m); sd.append(s)
+          def zrow(i): return [(data[i][j]-mu[j])/sd[j] for j in range(11)]
+          with open('InputVariables.txt','w') as f:
+              for i in train: f.write(' '.join(f'{x:.17g}' for x in zrow(i))+'\n')
+          with open('OutputVariables.txt','w') as f:
+              for i in train: f.write(f'{0.25+0.25*data[i][13]:.17g}\n')
+          with open('/tmp/wine_holdout.csv','w',newline='') as f:
+              w=csv.writer(f)
+              for i in test_ids: w.writerow(zrow(i)+[0.25+0.25*data[i][13], data[i][13]])
+          with open('/tmp/wone.initial','w') as f:
+              for k in range(11):
+                  f.write(' '.join(f'{0.12*math.sin(0.43*(k+1)*(j+1)):.17g}' for j in range(16))+'\n')
+          with open('/tmp/wtwo.initial','w') as f:
+              for j in range(16): f.write(f'{0.15*math.cos(0.37*(j+1)):.17g}\n')
+          print(f'prepared train={len(train)} test={len(test_ids)}')
+          PY
+      - name: Build production v23 and v24 runners
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for version in ('v23','v24'):
+              p=Path(version)/'main.cpp'
+              s=p.read_text()
+              s=s.replace('bool batchOnline=false,offline=false,test=true,randomiseWeights=false;', 'bool batchOnline=false,offline=true,test=false,randomiseWeights=false;')
+              s=s.replace('percentageErrorTarget=3.9;', 'percentageErrorTarget=BENCH_TARGET;')
+              s=s.replace('numberOfDescents=1000000,times=1,logEvery=1,trainingThreads=4,offlineRows=10000,testRows=13853;', 'numberOfDescents=12000,times=1,logEvery=0,trainingThreads=4,offlineRows=133,testRows=133;')
+              if 'BENCH_TARGET' not in s or 'offline=true' not in s: raise SystemExit(f'patch failed for {version}')
+              (Path(version)/'main_real_bench.cpp').write_text(s)
+          PY
+          for target in 0.001 0.0005; do
+            tag=$(echo "$target" | tr -d '.')
+            g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC -DBENCH_TARGET=$target v23/main_real_bench.cpp -lmvec -o /tmp/v23_$tag
+            g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC -DBENCH_TARGET=$target v24/main_real_bench.cpp -lmvec -o /tmp/v24_$tag
+          done
+      - name: Run paired rotating benchmark
+        run: |
+          cat > /tmp/eval_weights.py <<'PY'
+          import csv, math, sys
+          ver, rep, target, seconds = sys.argv[1], int(sys.argv[2]), float(sys.argv[3]), float(sys.argv[4])
+          w1=[]
+          for line in open('wone.txt'):
+              if line.strip(): w1.extend(map(float,line.split()))
+          w2=[float(x) for x in open('wtwo.txt').read().split()]
+          assert len(w1)==176 and len(w2)==16
+          def sig(z):
+              if z>=0:
+                  e=math.exp(-z); return 1/(1+e)
+              e=math.exp(z); return e/(1+e)
+          sq=0; ok=0; n=0
+          for row in csv.reader(open('/tmp/wine_holdout.csv')):
+              vals=list(map(float,row)); x=vals[:11]; y=vals[11]; cls=int(vals[12])
+              h=[sig(sum(x[k]*w1[k*16+j] for k in range(11))) for j in range(16)]
+              pred=sig(sum(h[j]*w2[j] for j in range(16)))
+              sq+=(pred-y)**2; n+=1
+              predcls=min(range(3),key=lambda c:abs(pred-(0.25+0.25*c)))
+              ok+=predcls==cls
+          print(f'{ver},{rep},{target:.7g},{seconds:.9f},{(sq/n)**0.5:.12f},{ok/n:.12f}')
+          PY
+          echo 'version,rep,target,seconds,holdout_rmse,holdout_accuracy' > /tmp/results.csv
+          run_one() {
+            ver=$1; rep=$2; target=$3; tag=$(echo "$target" | tr -d '.')
+            cp /tmp/wone.initial wone.txt; cp /tmp/wtwo.initial wtwo.txt
+            out=$(/tmp/${ver}_${tag})
+            sec=$(printf '%s\n' "$out" | awk '/Elapsed seconds:/ {print $3}' | tail -1)
+            test -n "$sec"
+            python3 /tmp/eval_weights.py "$ver" "$rep" "$target" "$sec" >> /tmp/results.csv
+          }
+          for target in 0.001 0.0005; do
+            for rep in $(seq 1 10); do
+              if [ $((rep % 2)) -eq 1 ]; then
+                run_one v23 "$rep" "$target"
+                run_one v24 "$rep" "$target"
+              else
+                run_one v24 "$rep" "$target"
+                run_one v23 "$rep" "$target"
+              fi
+            done
+          done
+          cat /tmp/results.csv
+      - name: Summarise paired timings
+        run: |
+          python3 - <<'PY'
+          import csv, statistics
+          rows=list(csv.DictReader(open('/tmp/results.csv')))
+          print('SUMMARY_BEGIN')
+          for target in (0.001,0.0005):
+              for v in ('v23','v24'):
+                  vals=[r for r in rows if r['version']==v and abs(float(r['target'])-target)<1e-12]
+                  ts=sorted(float(r['seconds']) for r in vals)
+                  rms=[float(r['holdout_rmse']) for r in vals]
+                  acc=[float(r['holdout_accuracy']) for r in vals]
+                  def q(p):
+                      x=(len(ts)-1)*p; lo=int(x); hi=min(lo+1,len(ts)-1); f=x-lo
+                      return ts[lo]*(1-f)+ts[hi]*f
+                  print(f'target={target} version={v} median={statistics.median(ts):.9f} p10={q(.1):.9f} p90={q(.9):.9f} rmse={statistics.median(rms):.12f} accuracy={statistics.median(acc):.12f}')
+              ratios=[]
+              for rep in range(1,11):
+                  t23=next(float(r['seconds']) for r in rows if r['version']=='v23' and int(r['rep'])==rep and abs(float(r['target'])-target)<1e-12)
+                  t24=next(float(r['seconds']) for r in rows if r['version']=='v24' and int(r['rep'])==rep and abs(float(r['target'])-target)<1e-12)
+                  ratios.append(t23/t24)
+              print(f'target={target} median_paired_speedup={statistics.median(ratios):.6f} min_paired_speedup={min(ratios):.6f} max_paired_speedup={max(ratios):.6f}')
+          print('SUMMARY_END')
+          PY
+      - name: Upload raw results
+        uses: actions/upload-artifact@v4
+        with:
+          name: v24-real-wine-results
+          path: /tmp/results.csv
