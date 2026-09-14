@@ -1,0 +1,27 @@
+name: v26 compile
+
+on:
+  pull_request:
+    paths:
+      - 'v26/**'
+      - 'v25/**'
+      - '.github/workflows/v26-compile.yml'
+  push:
+    paths:
+      - 'v26/**'
+      - 'v25/**'
+      - '.github/workflows/v26-compile.yml'
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Portable C++11 build
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror v26/main.cpp -o /tmp/v26-portable
+      - name: Accelerated C++11 build
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC v26/main.cpp -lmvec -o /tmp/v26-accelerated
+      - name: Exact dense benchmark compile
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror v26/benchmark/dense_exact_benchmark.cpp -o /tmp/v26-dense-exact
+      - name: Exact dense benchmark smoke test
+        run: /tmp/v26-dense-exact | head -3
