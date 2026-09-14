@@ -1,0 +1,78 @@
+V21 target-aware Gauss-Newton refresh investigation
+===================================================
+
+Baseline
+--------
+V20 computes one median-normalised square-root inverse Gauss-Newton diagonal
+when PE first reaches 0.05%. The scale is clipped to [1/28, 28] and held fixed.
+V19 history staging, v18 curvature acceptance, Armijo and MSE remain unchanged.
+
+Hypothesis
+----------
+The v20 diagonal is local curvature information. If the deep tail remains
+ill-conditioned while parameters move materially away from the 0.05% state,
+recomputing the same diagonal a small number of times may restore useful
+coordinate scaling without changing the secant history.
+
+Initial refresh screening
+-------------------------
+A single extra refresh was tested at PE values from roughly 0.04% down to
+0.002%. The best threshold varied with row count. Refreshes around 0.02-0.03%
+were promising, while a first refresh at 0.005% was generally too late.
+
+Two-refresh screening
+---------------------
+The combination 0.0225% then 0.01% was retained after cross-scale screening.
+The second threshold was sensitive: on 5k rows, alternatives at 0.011%, 0.009%
+and 0.0075% required materially more evaluations to reach 0.001%.
+
+Target gate
+-----------
+The extra refreshes are enabled only when the requested target is <=0.001%.
+This was added because applying the refresh schedule to a requested 0.002%
+target could regress the 5k case. For targets >0.001%, production v21 returns
+directly to trainRangeV20.
+
+Ultra-deep third refresh
+------------------------
+For requested targets <=0.0005%, an additional refresh at PE <=0.002% was
+consistently beneficial across 5k, 20k and 100k. Candidate refreshes at 0.005%
+and 0.003% were weaker in the cross-scale screen.
+
+Strict AVX2/libmvec confirmation
+--------------------------------
+The retained comparison used benchmark/refresh_benchmark.cpp compiled with:
+  g++ -std=c++11 -O3 -mavx2 -mfma -fopenmp \
+      -Wall -Wextra -Wpedantic -Werror refresh_benchmark.cpp -lmvec
+
+No -ffast-math flag was used for the retained benchmark table.
+
+0.001% target:
+  rows=5000   v20=2781  v21=1211  reduction=56.5%
+  rows=20000  v20=1829  v21=1166  reduction=36.2%
+  rows=100000 v20=1227  v21=998   reduction=18.7%
+
+0.0005% target:
+  rows=5000   v20=6228  v21=2248  reduction=63.9%
+  rows=20000  v20=7431  v21=3812  reduction=48.7%
+  rows=100000 v20=3526  v21=2593  reduction=26.5%
+
+Each objective/gradient evaluation counts as one row-pass equivalent and each
+Gauss-Newton diagonal refresh counts as one additional row-pass equivalent.
+
+Production policy
+-----------------
+Requested target > 0.001%:
+  delegate directly to v20.
+
+Requested target <= 0.001%:
+  v20 initial GN scale at 0.05%;
+  refresh at 0.0225%;
+  refresh at 0.01%.
+
+Requested target <= 0.0005%:
+  additionally refresh at 0.002%.
+
+The refresh recomputes the existing v20 scale. It does not reset history,
+change the line search, modify curvature acceptance, or change stopping and
+final-confirmation semantics.
