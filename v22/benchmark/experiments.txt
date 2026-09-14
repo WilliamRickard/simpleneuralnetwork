@@ -1,0 +1,81 @@
+V22 optimiser investigation
+===========================
+
+Baseline
+--------
+V21 uses staged L-BFGS with history 10 -> 160 and a median-normalised square-root
+inverse Gauss-Newton diagonal. For targets <= 0.001%, the diagonal is refreshed
+at 0.0225% and 0.01% PE; for targets <= 0.0005%, v21 refreshes again at 0.002%.
+
+Reproducibility
+---------------
+The screening harness uses the deterministic 11-16-1 benchmark inherited from
+v21, five deterministic worker slices, FP64 state and AVX2/libmvec evaluation.
+Five workers reproduce the merged v21 benchmark rows exactly. Retained builds
+use -O3 and do not use -ffast-math.
+
+Candidates screened
+-------------------
+1. Full-memory dense BFGS after a deep-tail transition.
+2. Dynamic diagonal inverse-BFGS scaling.
+3. Block Gauss-Newton inverse-square-root preconditioning, using one 11x11 block
+   per hidden unit plus a 16x16 output block.
+4. Strong-Wolfe line search with safeguarded zoom.
+
+Early rejection results at 5k / 0.001%
+---------------------------------------
+v21 baseline:                 1211 passes
+full BFGS at 0.05%:           1044 passes
+dynamic diagonal BFGS:          87 passes but stalled at 0.03416% PE
+block-GN:                     1463 passes
+strong Wolfe:                 1770 passes
+
+The diagonal update was rejected because it failed to converge. Block-GN was
+worse on 5k, 20k and 100k. Strong Wolfe was modestly better on 20k (1137 vs
+1166) but substantially worse on 5k and 100k (1770 vs 1211 and 1446 vs 998).
+
+Dense BFGS transition study
+---------------------------
+A dense switch at 0.05% was not robust. The transition point was therefore
+screened through the late deep stage. Around 0.015% PE a common cross-scale
+window emerged. Retaining the v21 trajectory up to that point was materially
+more robust than replacing v21's deep preconditioning earlier.
+
+The retained policy is:
+- requested target > 0.001%: delegate directly to v21;
+- requested target <= 0.001%: use v21 normally through 0.015% PE;
+- at PE <= 0.015%, initialise a full 192x192 inverse-Hessian matrix from the
+  current v21 diagonal scale multiplied by the ordinary L-BFGS scalar gamma;
+- after the switch, update the dense inverse Hessian with accepted v18-safe
+  BFGS secant pairs;
+- stop computing later v21 GN refreshes because the dense matrix has taken over.
+
+Retained strict results
+-----------------------
+0.001% target:
+  5k:    1211 ->  793 passes  (34.5% reduction)
+  20k:   1166 ->  857 passes  (26.5% reduction)
+  100k:   998 ->  822 passes  (17.6% reduction)
+
+0.0005% target:
+  5k:    2248 -> 1367 passes  (39.2% reduction)
+  20k:   3812 -> 1607 passes  (57.8% reduction)
+  100k:  2593 -> 1804 passes  (30.4% reduction)
+
+The final production-like harness also stopped maintaining the unused L-BFGS
+deque after the dense switch; all six retained counts were unchanged.
+
+Indicative local wall clock
+---------------------------
+On the research container, 0.001% runs changed approximately:
+  5k:    0.26s -> 0.17s
+  20k:   0.71s -> 0.55s
+  100k:  2.32s -> 2.00s
+
+At 0.0005%:
+  5k:    0.58s -> 0.23s
+  20k:   2.50s -> 0.86s
+  100k:  6.97s -> 4.41s
+
+Wall-clock numbers are indicative only; the release gate is deterministic
+row-pass count because host scheduling and CPU state vary.
