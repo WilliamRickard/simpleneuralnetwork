@@ -1,0 +1,125 @@
+V28 evaluator experiments
+=========================
+
+Baseline
+--------
+v27 merge commit:
+73ee69510c9b2651cef6084556d70f1a73a39923
+
+v27 production blob:
+f45d98227df884671bb762e07c0e07b27a6b5ae1
+
+Initial profile
+---------------
+At 100k rows on the four-worker benchmark configuration, a cheap-sigmoid timing surrogate reduced a full evaluator pass from about 1.17 ms to about 0.55 ms. A first-layer isolation test put hidden sigmoid work at roughly 0.43 ms and backpropagation at roughly 0.32 ms.
+
+Activation ranges
+-----------------
+Synthetic deep-training hidden preactivations stayed within roughly |z| < 1.82.
+
+The repeated real-Wine workload was much wider by the 0.0005% stage:
+median |z| ~ 5.37
+p90 |z| ~ 14.72
+p99 |z| ~ 30.99
+max |z| ~ 50.91
+
+Only about 66% of hidden preactivations were inside [-8,8], while about 92% were inside [-16,16].
+
+Rejected: approximate vector sigmoid
+------------------------------------
+A range-reduced AVX-512 2^x-polynomial sigmoid produced:
+- evaluator speedup roughly 1.30x to 1.36x;
+- worst observed relative error below about 9e-13 across five million samples on [-60,60].
+
+Despite that numerical accuracy, Wine 13.3k / 0.001% changed basin:
+- baseline hold-out classification accuracy: about 84.4%;
+- approximate-sigmoid candidate: about 71.1%.
+
+Rejected.
+
+Rejected: noplt
+---------------
+Changing the libmvec external call form to avoid PLT indirection was bit-exact and effectively neutral. The cost is inside vector exp, not dynamic symbol dispatch.
+
+Rejected: restricted-domain libmvec clone
+-----------------------------------------
+glibc's AVX-512 exp already uses table-based range reduction, a short polynomial and bit construction of the exponent, with exceptional scalar fallbacks outside the normal domain. Reimplementing that logic locally would add maintenance/licensing burden for limited expected gain.
+
+Register-pressure investigation
+-------------------------------
+The v17 evaluator holds 22 first-layer gradient ZMM accumulators across repeated external vector-exp calls. SysV vector registers are caller-saved, causing substantial spill/reload traffic.
+
+Rejected intermediate candidates:
+- all-scratch first-layer gradients: too much L1 traffic;
+- KEEP=5 hybrid: exact and faster, but less stable than the final design;
+- row-major immediate update of spilled pairs: exact but close to neutral;
+- vector reduction of maxPercentageError: exact but no useful combined gain.
+
+Retained: explicit call-boundary evaluator
+------------------------------------------
+For each eight-row tile:
+1. compute forward preactivations;
+2. store preactivation state before libmvec calls;
+3. compute/store hidden activations;
+4. compute output sigmoid;
+5. only then load the gradient accumulators;
+6. process all eight rows of backprop in original order;
+7. store gradients once.
+
+This preserves every accumulator's FMA sequence.
+
+Assembly evidence
+-----------------
+Production-style slice, exploratory GCC assembly:
+- total stack references: 327 -> 265;
+- ZMM stack references: 274 -> 191;
+- ZMM stack traffic reduction: about 30%.
+
+Exactness
+---------
+Fresh production-kernel benchmark:
+- 425/425 cases passed;
+- row counts 1, 7, 8, 9, 127, 133, 999, 1000, 2048, 3072,
+  5000, 10000, 10003, 13300, 20005, 50000, 100000;
+- worker partitions 1 through 5;
+- five deterministic seeds;
+- zero differences in metrics or any gradient double.
+
+Earlier wider stress:
+- 756/756 cases passed.
+
+Full optimiser:
+- 5k/10k/20k/50k/100k deep-target trajectories remained bit-identical;
+- accepted updates, evaluator calls, rejects, PE, objective and final 192 parameters identical.
+
+Wine:
+- both 0.001% and 0.0005% targets bit-identical;
+- final weights identical;
+- hold-out RMSE identical;
+- classification accuracy identical at 84.44%.
+
+Performance
+-----------
+Fresh 100k single-worker production-kernel benchmark on the later, more-contended host:
+median speedup ~1.059x.
+
+Earlier cooled single-worker evaluator medians:
+- 5k ~1.094x
+- 10k ~1.162x
+- 20k ~1.113x
+- 50k ~1.090x
+- 100k ~1.059x
+
+Three-worker quota-headroom tests were positive at every tested size, generally around 1.065x-1.094x.
+
+Long 0.0005% synthetic full-training medians were positive at all production sizes, but several larger values were visibly inflated by host scheduling noise and are not used as expected performance claims.
+
+Wine, seven cooled rotating-order pairs:
+- 0.001% median ~1.105x
+- 0.0005% median ~1.078x
+
+Release interpretation
+----------------------
+Expected gain: high-single-digit whole-training improvement on representative deep workloads, with no numerical change.
+
+Do not advertise the largest individual synthetic timing wins. The benchmark host's four-CPU quota creates substantial sustained-load variance.
