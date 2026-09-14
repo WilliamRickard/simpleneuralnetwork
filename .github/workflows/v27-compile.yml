@@ -1,0 +1,27 @@
+name: v27 compile
+
+on:
+  pull_request:
+    paths:
+      - 'v27/**'
+      - 'v26/**'
+      - '.github/workflows/v27-compile.yml'
+  push:
+    paths:
+      - 'v27/**'
+      - 'v26/**'
+      - '.github/workflows/v27-compile.yml'
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Portable C++11 build
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror v27/main.cpp -o /tmp/v27-portable
+      - name: Accelerated C++11 build
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC v27/main.cpp -lmvec -o /tmp/v27-accelerated
+      - name: Exact GN benchmark compile
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp v27/benchmark/gn_exact_benchmark.cpp -o /tmp/v27-gn-exact
+      - name: Exact GN benchmark smoke test
+        run: /tmp/v27-gn-exact
