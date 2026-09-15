@@ -69,9 +69,21 @@ jobs:
           PY
           test -z "$(git status --porcelain)"
 
-      - name: Strict standalone compatibility builds v18-v29
+      - name: Historical standalone compatibility builds v18-v26
         run: |
-          for version in $(seq 18 29); do
+          for version in $(seq 18 26); do
+            echo "portable compatibility v${version}"
+            g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -fopenmp \
+              "v${version}/main.cpp" -o "/tmp/v${version}-portable"
+            echo "accelerated compatibility v${version}"
+            g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -fopenmp \
+              -DSIMPLE_NN_USE_LIBMVEC "v${version}/main.cpp" -lmvec \
+              -o "/tmp/v${version}-accelerated"
+          done
+
+      - name: Strict predecessor and v29 builds
+        run: |
+          for version in 27 28 29; do
             echo "strict portable v${version}"
             g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
               "v${version}/main.cpp" -o "/tmp/v${version}-portable"
