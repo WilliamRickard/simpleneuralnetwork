@@ -1,0 +1,72 @@
+name: v30 GN split scalar sigmoid screen
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - '.github/workflows/v30-gn-split-sigmoid.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gn-split-sigmoid:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Require AVX-512F runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then exit 75; fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+
+      - name: Build baseline and split scalar sigmoid variants
+        run: |
+          common='-std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC'
+          g++ $common v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-base
+          for variant in split8 split16; do
+            cp v30/benchmark/gn_candidate.cpp "/tmp/gn-${variant}.cpp"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          old='    for(size_t j=0;j<HIDDEN_NODES;j++)hidden[j]=sigmoidV15(raw[j]);'
+          replacements={
+            'split8': '''    double expv[HIDDEN_NODES];
+    for(size_t j=0;j<8;j++)expv[j]=exp(-raw[j]);
+    for(size_t j=0;j<8;j++)hidden[j]=1.0/(1.0+expv[j]);
+    for(size_t j=8;j<HIDDEN_NODES;j++)expv[j]=exp(-raw[j]);
+    for(size_t j=8;j<HIDDEN_NODES;j++)hidden[j]=1.0/(1.0+expv[j]);''',
+            'split16': '''    double expv[HIDDEN_NODES];
+    for(size_t j=0;j<HIDDEN_NODES;j++)expv[j]=exp(-raw[j]);
+    for(size_t j=0;j<HIDDEN_NODES;j++)hidden[j]=1.0/(1.0+expv[j]);'''
+          }
+          for name,new in replacements.items():
+              p=Path(f'/tmp/gn-{name}.cpp')
+              s=p.read_text()
+              if old not in s: raise SystemExit('scalar sigmoid loop not found')
+              p.write_text(s.replace(old,new,1))
+          PY
+          g++ $common -I. /tmp/gn-split8.cpp -lmvec -o /tmp/gn-split8
+          g++ $common -I. /tmp/gn-split16.cpp -lmvec -o /tmp/gn-split16
+          sha256sum /tmp/gn-base /tmp/gn-split8 /tmp/gn-split16
+
+      - name: Exactness and timing
+        run: |
+          echo BASE
+          /tmp/gn-base 9 2
+          echo SPLIT8
+          /tmp/gn-split8 9 2
+          echo SPLIT16
+          /tmp/gn-split16 9 2
