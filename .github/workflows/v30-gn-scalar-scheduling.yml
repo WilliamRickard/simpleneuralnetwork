@@ -60,4 +60,4 @@ jobs:
           echo 'NOERRNO'
           /tmp/gn-noerrno 9 2
 
-# Retry marker: runner capability only.
+# Retry marker 2: runner capability only.
