@@ -1,0 +1,78 @@
+name: v30 four-accumulator release matrix
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - '.github/workflows/v30-jblock4-release-matrix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Require AVX-512F runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then exit 75; fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+
+      - name: Patch candidate and strict build
+        run: |
+          python3 v30/benchmark/patch_v30_parammajor_all.py
+          python3 v30/benchmark/patch_v30_jblock4.py
+          git diff --check
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
+            -DSIMPLE_NN_USE_LIBMVEC v30/benchmark/full_training_benchmark.cpp \
+            -lmvec -o /tmp/v30-release-matrix
+          sha256sum /tmp/v30-release-matrix
+
+      - name: Ten-case exact release matrix
+        run: |
+          python3 - <<'PY'
+          import statistics
+          import subprocess
+
+          def percentile_nearest(values, p):
+              ordered=sorted(values)
+              return ordered[round((len(ordered)-1)*p)]
+
+          print('rows,target,threads,pairs,updates,wins,median_speedup,p10_speedup,p90_speedup,trajectory_equal')
+          for rows in (5000,10000,20000,50000,100000):
+              for target in ('0.001','0.0005'):
+                  output=subprocess.check_output([
+                      '/tmp/v30-release-matrix',str(rows),target,'7','2','200'
+                  ],text=True)
+                  records=[]
+                  for line in output.splitlines():
+                      fields=line.split(',')
+                      if len(fields)==9 and fields[0].isdigit(): records.append(fields)
+                  if len(records)!=7:
+                      raise SystemExit(f'unexpected benchmark output rows={rows} target={target}:\n{output}')
+                  ratios=[float(r[7]) for r in records]
+                  updates={int(r[4]) for r in records}
+                  if len(updates)!=1:
+                      raise SystemExit(f'update count moved rows={rows} target={target}: {updates}')
+                  print(
+                      f'{rows},{target},2,7,{next(iter(updates))},'
+                      f'{sum(x>1.0 for x in ratios)},'
+                      f'{statistics.median(ratios):.12g},'
+                      f'{percentile_nearest(ratios,0.10):.12g},'
+                      f'{percentile_nearest(ratios,0.90):.12g},True'
+                  )
+          PY
