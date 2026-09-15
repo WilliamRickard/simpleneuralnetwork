@@ -62,3 +62,5 @@ jobs:
               updates={int(r[4]) for r in records}
               print(f'PHYSICAL rows={rows} target={target} median_speedup={statistics.median(ratios):.9f} wins={sum(x>1 for x in ratios)}/5 updates={sorted(updates)} min={min(ratios):.9f} max={max(ratios):.9f}')
           PY
+
+# Fresh-run marker after five non-AVX allocations.
