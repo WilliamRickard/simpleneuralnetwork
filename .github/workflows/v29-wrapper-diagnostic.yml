@@ -126,7 +126,7 @@ jobs:
           source = Path('/tmp/v29-evaluator-exact.xz')
           data = source.read_bytes()
           encoded = base64.b64encode(data).decode('ascii')
-          chunk_size = 8000
+          chunk_size = 3000
           chunks = [encoded[i:i + chunk_size] for i in range(0, len(encoded), chunk_size)]
           prefix = f'.github/diagnostics/{source.name}-{os.environ["GITHUB_RUN_ID"]}'
           for index, chunk in enumerate(chunks):
