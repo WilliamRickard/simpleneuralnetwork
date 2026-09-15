@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import statistics
 import subprocess
 import tempfile
@@ -24,26 +25,38 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pairs", type=int, default=7)
     parser.add_argument("--threads", type=int, default=4)
+    parser.add_argument("--cooldown-ms", type=int, default=200)
     parser.add_argument("--output", type=Path, default=Path("v29/benchmark/full_training_results.csv"))
     args = parser.parse_args()
-    if args.pairs < 1 or args.threads < 1:
-        parser.error("pairs and threads must be positive")
+    if args.pairs < 1 or args.threads < 1 or args.cooldown_ms < 0:
+        parser.error("pairs and threads must be positive; cooldown must be non-negative")
 
     root = Path(__file__).resolve().parents[2]
     source = root / "v29" / "benchmark" / "full_training_benchmark.cpp"
+    environment = os.environ.copy()
+    environment.setdefault("OMP_PROC_BIND", "true")
+    environment.setdefault("OMP_PLACES", "cores")
+    environment.setdefault("OMP_DYNAMIC", "false")
+
     with tempfile.TemporaryDirectory(prefix="v29-bench-") as temporary:
         binary = Path(temporary) / "v29-full-training"
         compile_command = [
             "g++", "-std=c++11", "-O3", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
             "-fopenmp", "-DSIMPLE_NN_USE_LIBMVEC", str(source), "-lmvec", "-o", str(binary),
         ]
-        subprocess.run(compile_command, cwd=root, check=True)
+        subprocess.run(compile_command, cwd=root, check=True, env=environment)
 
         summaries: list[dict[str, object]] = []
         for rows in ROWS:
             for target in TARGETS:
-                command = [str(binary), str(rows), str(target), str(args.pairs), str(args.threads)]
-                completed = subprocess.run(command, cwd=root, check=True, text=True, capture_output=True)
+                command = [
+                    str(binary), str(rows), str(target), str(args.pairs),
+                    str(args.threads), str(args.cooldown_ms),
+                ]
+                completed = subprocess.run(
+                    command, cwd=root, check=True, text=True, capture_output=True,
+                    env=environment,
+                )
                 ratios: list[float] = []
                 updates: set[int] = set()
                 for line in completed.stdout.splitlines():
@@ -63,6 +76,7 @@ def main() -> int:
                     "target": target,
                     "threads": args.threads,
                     "pairs": len(ratios),
+                    "cooldown_ms": args.cooldown_ms,
                     "updates": next(iter(updates)),
                     "wins": sum(value > 1.0 for value in ratios),
                     "median_speedup": statistics.median(ratios),
