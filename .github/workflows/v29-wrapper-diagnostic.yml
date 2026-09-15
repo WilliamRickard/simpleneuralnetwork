@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   issues: write
   pull-requests: write
 
@@ -86,28 +86,32 @@ jobs:
           set -e
           if [ "$status" -ne 0 ]; then
             python3 - <<'PY'
-          import json, os, urllib.request
+          import base64
+          import json
+          import os
+          import urllib.request
           from pathlib import Path
-          log = Path('/tmp/v29-portable-build.log').read_text(errors='replace')
-          if len(log) > 50000:
-              log = log[-50000:]
-          body = (
-              'Automated v29 propagated-no-main strict-portable diagnostic for commit `'
-              + os.environ['GITHUB_SHA'] + '` failed. Compiler output:\n\n```text\n'
-              + log + '\n```'
-          )
-          req = urllib.request.Request(
-              'https://api.github.com/repos/' + os.environ['GITHUB_REPOSITORY'] + '/issues/37/comments',
-              data=json.dumps({'body': body}).encode(),
+
+          log = Path('/tmp/v29-portable-build.log').read_bytes()
+          diagnostic_path = f'.github/diagnostics/v29-portable-{os.environ["GITHUB_RUN_ID"]}.txt'
+          payload = {
+              'message': f'Capture v29 portable diagnostic run {os.environ["GITHUB_RUN_ID"]}',
+              'content': base64.b64encode(log).decode('ascii'),
+              'branch': os.environ['GITHUB_REF_NAME'],
+          }
+          request = urllib.request.Request(
+              'https://api.github.com/repos/' + os.environ['GITHUB_REPOSITORY'] + '/contents/' + diagnostic_path,
+              data=json.dumps(payload).encode('utf-8'),
               headers={
                   'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
                   'Accept': 'application/vnd.github+json',
                   'X-GitHub-Api-Version': '2022-11-28',
                   'Content-Type': 'application/json',
               },
-              method='POST',
+              method='PUT',
           )
-          urllib.request.urlopen(req).read()
+          urllib.request.urlopen(request).read()
+          print('Saved compiler diagnostic to ' + diagnostic_path)
           PY
             cat /tmp/v29-portable-build.log
             exit "$status"
