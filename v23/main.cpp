@@ -3,9 +3,9 @@
 #pragma GCC diagnostic ignored "-Wmisleading-indentation"
 #pragma GCC diagnostic ignored "-Wunused-function"
 #endif
-#define main v22_embedded_main
+#define SIMPLE_NN_V22_NO_MAIN
 #include "../v22/main.cpp"
-#undef main
+#undef SIMPLE_NN_V22_NO_MAIN
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
@@ -153,6 +153,7 @@ static void offlineRunV23(size_t rowCount,const OptimiserConfig&optimiser,double
     if(!result.reachedTarget)cout<<"Offline BFGS reached the maximum number of iterations before the target.\n";
 }
 
+#ifndef SIMPLE_NN_V23_NO_MAIN
 int main(){
     try{
         bool batchOnline=false,offline=false,test=true,randomiseWeights=false;
@@ -188,3 +189,4 @@ int main(){
         return 1;
     }
 }
+#endif
