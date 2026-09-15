@@ -1,0 +1,16 @@
+name: v29 smoke
+
+on:
+  push:
+    branches:
+      - v29-phased-evaluator
+    paths:
+      - '.github/workflows/v29-smoke.yml'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Smoke test
+        run: echo 'GitHub Actions runner started successfully'
