@@ -65,10 +65,23 @@ reduced_w14 = """    for(size_t k=0;k<NUMBER_OF_VARIABLES;k++){
         }
     }"""
 
-direct_output = reduced_output.replace("total.values", "out.values").replace("scratch[", "scratch[")
-direct_output4 = reduced_output4.replace("total.values", "out.values").replace("scratch+", "scratch.data()+")
-direct_w1 = reduced_w1.replace("total.values", "out.values").replace("startRow", "blockStart")
-direct_w14 = reduced_w14.replace("total.values", "out.values").replace("startRow", "blockStart").replace("scratch+", "scratch.data()+")
+
+def nested(s: str) -> str:
+    return "\n".join("    "+line for line in s.splitlines())
+
+
+direct_output = nested(reduced_output.replace("total.values", "out.values"))
+direct_output4 = nested(
+    reduced_output4.replace("total.values", "out.values").replace("scratch+", "scratch.data()+")
+)
+direct_w1 = nested(
+    reduced_w1.replace("total.values", "out.values").replace("startRow", "blockStart")
+)
+direct_w14 = nested(
+    reduced_w14.replace("total.values", "out.values")
+    .replace("startRow", "blockStart")
+    .replace("scratch+", "scratch.data()+")
+)
 
 for old,new,label in (
     (reduced_output,reduced_output4,"reduced output"),
