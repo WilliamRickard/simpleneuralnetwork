@@ -1,0 +1,6 @@
+Merge note
+==========
+
+Do not infer CI status from this directory. The release decision is based on the recorded exactness, full-optimiser and Wine validation plus source review.
+
+When merging, pin the pull request to the reviewed head SHA reported by GitHub after the final diff review.
