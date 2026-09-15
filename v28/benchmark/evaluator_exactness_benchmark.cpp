@@ -1,5 +1,12 @@
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
 #define SIMPLE_NN_V28_NO_MAIN
 #include "../main.cpp"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #include <cstring>
 
