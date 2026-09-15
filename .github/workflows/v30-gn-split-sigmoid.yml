@@ -36,27 +36,23 @@ jobs:
         run: |
           common='-std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC'
           g++ $common v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-base
-          for variant in split8 split16; do
-            cp v30/benchmark/gn_candidate.cpp "/tmp/gn-${variant}.cpp"
-          done
+          cp v30/benchmark/gn_candidate.cpp /tmp/gn-split8.cpp
+          cp v30/benchmark/gn_candidate.cpp /tmp/gn-split16.cpp
           python3 - <<'PY'
           from pathlib import Path
           old='    for(size_t j=0;j<HIDDEN_NODES;j++)hidden[j]=sigmoidV15(raw[j]);'
-          replacements={
-            'split8': '''    double expv[HIDDEN_NODES];
-    for(size_t j=0;j<8;j++)expv[j]=exp(-raw[j]);
-    for(size_t j=0;j<8;j++)hidden[j]=1.0/(1.0+expv[j]);
-    for(size_t j=8;j<HIDDEN_NODES;j++)expv[j]=exp(-raw[j]);
-    for(size_t j=8;j<HIDDEN_NODES;j++)hidden[j]=1.0/(1.0+expv[j]);''',
-            'split16': '''    double expv[HIDDEN_NODES];
-    for(size_t j=0;j<HIDDEN_NODES;j++)expv[j]=exp(-raw[j]);
-    for(size_t j=0;j<HIDDEN_NODES;j++)hidden[j]=1.0/(1.0+expv[j]);'''
-          }
-          for name,new in replacements.items():
-              p=Path(f'/tmp/gn-{name}.cpp')
-              s=p.read_text()
+          new8=('    double expv[HIDDEN_NODES];\n'
+                '    for(size_t j=0;j<8;j++)expv[j]=exp(-raw[j]);\n'
+                '    for(size_t j=0;j<8;j++)hidden[j]=1.0/(1.0+expv[j]);\n'
+                '    for(size_t j=8;j<HIDDEN_NODES;j++)expv[j]=exp(-raw[j]);\n'
+                '    for(size_t j=8;j<HIDDEN_NODES;j++)hidden[j]=1.0/(1.0+expv[j]);')
+          new16=('    double expv[HIDDEN_NODES];\n'
+                 '    for(size_t j=0;j<HIDDEN_NODES;j++)expv[j]=exp(-raw[j]);\n'
+                 '    for(size_t j=0;j<HIDDEN_NODES;j++)hidden[j]=1.0/(1.0+expv[j]);')
+          for path,new in ((Path('/tmp/gn-split8.cpp'),new8),(Path('/tmp/gn-split16.cpp'),new16)):
+              s=path.read_text()
               if old not in s: raise SystemExit('scalar sigmoid loop not found')
-              p.write_text(s.replace(old,new,1))
+              path.write_text(s.replace(old,new,1))
           PY
           g++ $common -I. /tmp/gn-split8.cpp -lmvec -o /tmp/gn-split8
           g++ $common -I. /tmp/gn-split16.cpp -lmvec -o /tmp/gn-split16
