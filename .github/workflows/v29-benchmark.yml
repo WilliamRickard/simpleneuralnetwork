@@ -1,0 +1,48 @@
+name: v29 benchmark
+
+on:
+  pull_request:
+    paths:
+      - 'v29/**'
+      - '.github/workflows/v29-benchmark.yml'
+  push:
+    branches:
+      - v29-phased-evaluator
+    paths:
+      - 'v29/**'
+      - '.github/workflows/v29-benchmark.yml'
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: CPU capabilities
+        run: lscpu
+      - name: Portable C++11 build
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror v29/main.cpp -o /tmp/v29-portable
+      - name: Accelerated C++11 build
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC v29/main.cpp -lmvec -o /tmp/v29-accelerated
+      - name: Production evaluator exactness benchmark
+        run: |
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC \
+            v29/benchmark/evaluator_exactness_benchmark.cpp -lmvec -o /tmp/v29-evaluator-exact
+          /tmp/v29-evaluator-exact
+      - name: Full training matrix
+        env:
+          OMP_PROC_BIND: 'true'
+          OMP_PLACES: cores
+          OMP_DYNAMIC: 'false'
+        run: python3 v29/benchmark/run_full_training.py --pairs 7 --threads 4 --cooldown-ms 200 --output /tmp/v29-full-training.csv
+      - name: Show matrix results
+        if: always()
+        run: cat /tmp/v29-full-training.csv || true
+      - name: Upload matrix results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v29-full-training-results
+          path: /tmp/v29-full-training.csv
+          if-no-files-found: ignore
