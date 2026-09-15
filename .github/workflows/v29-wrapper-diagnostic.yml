@@ -1,4 +1,4 @@
-name: v29 wrapper diagnostic
+name: v29 committed release gate
 
 # Shell-only: repository policy rejects external `uses:` actions.
 on:
@@ -10,12 +10,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  diagnose:
+  release-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
     steps:
       - name: Checkout exact pushed commit
         run: |
@@ -23,116 +27,84 @@ jobs:
           git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
           git fetch --depth=1 origin "${GITHUB_SHA}"
           git checkout --detach FETCH_HEAD
+          git status --porcelain
 
-      - name: Apply propagated no-main wrapper candidate in workspace
+      - name: Verify committed no-main include chain
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace_once(path: str, old: str, new: str) -> None:
-              """Replace one required source fragment, failing if it moved."""
-              file_path = Path(path)
-              text = file_path.read_text()
-              if old not in text:
-                  raise SystemExit(f'expected text not found in {path}: {old!r}')
-              file_path.write_text(text.replace(old, new, 1))
-
-          def guard_final_main(version: int) -> None:
-              """Guard one historical CLI entry point for library-style inclusion."""
-              file_path = Path(f'v{version}/main.cpp')
-              text = file_path.read_text()
-              guard = f'SIMPLE_NN_V{version}_NO_MAIN'
-              if f'#ifndef {guard}\nint main(){{' in text:
-                  return
-              needle = '\nint main(){\n'
-              if needle not in text:
-                  raise SystemExit(f'global main not found in v{version}/main.cpp')
-              text = text.replace(needle, f'\n#ifndef {guard}\nint main(){{\n', 1)
-              file_path.write_text(text.rstrip() + '\n#endif\n')
-
-          replace_once(
-              'v18/main.cpp',
-              '#include<cstddef>\n#include<ctime>',
-              '#include<cstddef>\n#include<cstdint>\n#include<cstring>\n#include<ctime>',
-          )
-          guard_final_main(18)
+          v18 = Path('v18/main.cpp').read_text()
+          if '#include<cstdint>\n#include<cstring>\n#include<ctime>' not in v18:
+              raise SystemExit('v18 global standard-header boundary fix is missing')
+          if '#ifndef SIMPLE_NN_V18_NO_MAIN\nint main(){' not in v18:
+              raise SystemExit('v18 no-main guard is missing')
 
           for version in range(19, 28):
               previous = version - 1
-              replace_once(
-                  f'v{version}/main.cpp',
-                  f'#define main v{previous}_embedded_main\n#include "../v{previous}/main.cpp"\n#undef main',
-                  f'#define SIMPLE_NN_V{previous}_NO_MAIN\n#include "../v{previous}/main.cpp"\n#undef SIMPLE_NN_V{previous}_NO_MAIN',
+              text = Path(f'v{version}/main.cpp').read_text()
+              include = (
+                  f'#define SIMPLE_NN_V{previous}_NO_MAIN\n'
+                  f'#include "../v{previous}/main.cpp"\n'
+                  f'#undef SIMPLE_NN_V{previous}_NO_MAIN'
               )
-              guard_final_main(version)
+              if include not in text:
+                  raise SystemExit(f'v{version} predecessor guard is missing')
+              if f'#ifndef SIMPLE_NN_V{version}_NO_MAIN\nint main(){{' not in text:
+                  raise SystemExit(f'v{version} own no-main guard is missing')
 
-          replace_once(
-              'v28/main.cpp',
-              '#define main v27_embedded_main\n#include "../v27/main.cpp"\n#undef main',
-              '#define SIMPLE_NN_V27_NO_MAIN\n#include "../v27/main.cpp"\n#undef SIMPLE_NN_V27_NO_MAIN',
-          )
-          replace_once(
-              'v29/main.cpp',
-              '#define main v28_embedded_main\n#include "../v28/main.cpp"\n#undef main',
-              '#define SIMPLE_NN_V28_NO_MAIN\n#include "../v28/main.cpp"\n#undef SIMPLE_NN_V28_NO_MAIN',
-          )
-          PY
-          git diff --check
-
-      - name: Strict candidate builds
-        run: |
-          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp v29/main.cpp -o /tmp/v29-portable
-          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC v29/main.cpp -lmvec -o /tmp/v29-accelerated
-
-      - name: Build exact evaluator release gate
-        run: |
-          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC \
-            v29/benchmark/evaluator_exactness_benchmark.cpp -lmvec -o /tmp/v29-evaluator-exact
-          sha256sum /tmp/v29-evaluator-exact
-
-      - name: Export evaluator gate in small chunks
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          xz -9 -k /tmp/v29-evaluator-exact
-          python3 - <<'PY'
-          import base64
-          import hashlib
-          import json
-          import os
-          import urllib.request
-          from pathlib import Path
-
-          def upload_text(path: str, text: str) -> None:
-              """Create one small UTF-8 evaluator chunk on the v29 branch."""
-              payload = {
-                  'message': f'Export v29 evaluator chunk {Path(path).name}',
-                  'content': base64.b64encode(text.encode('ascii')).decode('ascii'),
-                  'branch': os.environ['GITHUB_REF_NAME'],
-              }
-              request = urllib.request.Request(
-                  'https://api.github.com/repos/' + os.environ['GITHUB_REPOSITORY'] + '/contents/' + path,
-                  data=json.dumps(payload).encode('utf-8'),
-                  headers={
-                      'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
-                      'Accept': 'application/vnd.github+json',
-                      'X-GitHub-Api-Version': '2022-11-28',
-                      'Content-Type': 'application/json',
-                  },
-                  method='PUT',
+          for version in (28, 29):
+              previous = version - 1
+              text = Path(f'v{version}/main.cpp').read_text()
+              include = (
+                  f'#define SIMPLE_NN_V{previous}_NO_MAIN\n'
+                  f'#include "../v{previous}/main.cpp"\n'
+                  f'#undef SIMPLE_NN_V{previous}_NO_MAIN'
               )
-              urllib.request.urlopen(request).read()
+              if include not in text:
+                  raise SystemExit(f'v{version} predecessor guard is missing')
 
-          source = Path('/tmp/v29-evaluator-exact.xz')
-          data = source.read_bytes()
-          encoded = base64.b64encode(data).decode('ascii')
-          chunk_size = 3000
-          chunks = [encoded[i:i + chunk_size] for i in range(0, len(encoded), chunk_size)]
-          prefix = f'.github/diagnostics/{source.name}-{os.environ["GITHUB_RUN_ID"]}'
-          for index, chunk in enumerate(chunks):
-              upload_text(f'{prefix}.part{index:02d}', chunk)
-          print(
-              f'exported {source.name} bytes={len(data)} '
-              f'sha256={hashlib.sha256(data).hexdigest()} chunks={len(chunks)}'
-          )
+          if '#define main v' in ''.join(Path(f'v{v}/main.cpp').read_text() for v in range(18, 30)):
+              raise SystemExit('legacy recursive main-renaming wrapper remains in v18-v29')
           PY
+          test -z "$(git status --porcelain)"
+
+      - name: Strict standalone compatibility builds v18-v29
+        run: |
+          for version in $(seq 18 29); do
+            echo "strict portable v${version}"
+            g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
+              "v${version}/main.cpp" -o "/tmp/v${version}-portable"
+            echo "strict accelerated v${version}"
+            g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
+              -DSIMPLE_NN_USE_LIBMVEC "v${version}/main.cpp" -lmvec \
+              -o "/tmp/v${version}-accelerated"
+          done
+
+      - name: Build committed release harnesses
+        run: |
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
+            -DSIMPLE_NN_USE_LIBMVEC v29/benchmark/evaluator_exactness_benchmark.cpp \
+            -lmvec -o /tmp/v29-evaluator-exact
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
+            -DSIMPLE_NN_USE_LIBMVEC v29/benchmark/full_training_benchmark.cpp \
+            -lmvec -o /tmp/v29-full-training
+          sha256sum /tmp/v29-evaluator-exact /tmp/v29-full-training
+
+      - name: Require AVX-512F release runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then
+            echo 'Runner lacks AVX-512F; release execution was not attempted.' >&2
+            exit 75
+          fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+
+      - name: Evaluator bit-exactness gate
+        run: /tmp/v29-evaluator-exact
+
+      - name: Full training release matrix
+        run: |
+          python3 v29/benchmark/run_full_training.py \
+            --pairs 7 --threads 2 --cooldown-ms 200 \
+            --output /tmp/v29-full-training.csv
+          cat /tmp/v29-full-training.csv
