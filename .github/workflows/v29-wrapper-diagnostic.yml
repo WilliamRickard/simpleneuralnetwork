@@ -10,12 +10,12 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     steps:
       - name: Checkout exact pushed commit
         run: |
@@ -93,64 +93,26 @@ jobs:
             g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC "v${version}/main.cpp" -lmvec -o "/tmp/v${version}-accelerated"
           done
 
-      - name: Build exact full-training release harness
+      - name: Build production evaluator exactness gate
         run: |
           g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC \
-            v29/benchmark/full_training_benchmark.cpp -lmvec -o /tmp/v29-full-training
-          sha256sum /tmp/v29-full-training
+            v29/benchmark/evaluator_exactness_benchmark.cpp -lmvec -o /tmp/v29-evaluator-exact
+          sha256sum /tmp/v29-evaluator-exact
 
-      - name: Run AVX-512 gate or export small chunks
+      - name: Host capability
+        run: |
+          nproc
+          lscpu | grep -E 'Model name|^CPU\(s\):|Thread\(s\) per core|Core\(s\) per socket' || true
+          grep -m1 -o 'avx512f' /proc/cpuinfo || true
+
+      - name: Production evaluator exactness
         env:
-          GH_TOKEN: ${{ github.token }}
           OMP_PROC_BIND: 'true'
           OMP_PLACES: cores
           OMP_DYNAMIC: 'false'
         run: |
-          if grep -qw avx512f /proc/cpuinfo; then
-            python3 v29/benchmark/run_full_training.py --pairs 7 --threads 2 --cooldown-ms 200 --output /tmp/v29-full-training.csv
-            cat /tmp/v29-full-training.csv
-          else
-            echo 'Runner lacks AVX-512F; exporting exact workspace-patched full-training executable.'
-            xz -9 -k /tmp/v29-full-training
-            python3 - <<'PY'
-          import base64
-          import hashlib
-          import json
-          import os
-          import urllib.request
-          from pathlib import Path
-
-          def upload_text(path: str, text: str) -> None:
-              """Create one small UTF-8 diagnostic chunk on the v29 branch."""
-              payload = {
-                  'message': f'Export v29 benchmark chunk {Path(path).name}',
-                  'content': base64.b64encode(text.encode('ascii')).decode('ascii'),
-                  'branch': os.environ['GITHUB_REF_NAME'],
-              }
-              request = urllib.request.Request(
-                  'https://api.github.com/repos/' + os.environ['GITHUB_REPOSITORY'] + '/contents/' + path,
-                  data=json.dumps(payload).encode('utf-8'),
-                  headers={
-                      'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
-                      'Accept': 'application/vnd.github+json',
-                      'X-GitHub-Api-Version': '2022-11-28',
-                      'Content-Type': 'application/json',
-                  },
-                  method='PUT',
-              )
-              urllib.request.urlopen(request).read()
-
-          source = Path('/tmp/v29-full-training.xz')
-          data = source.read_bytes()
-          encoded = base64.b64encode(data).decode('ascii')
-          chunk_size = 8000
-          chunks = [encoded[i:i + chunk_size] for i in range(0, len(encoded), chunk_size)]
-          prefix = f'.github/diagnostics/{source.name}-{os.environ["GITHUB_RUN_ID"]}'
-          for index, chunk in enumerate(chunks):
-              upload_text(f'{prefix}.part{index:02d}', chunk)
-          print(
-              f'exported {source.name} bytes={len(data)} '
-              f'sha256={hashlib.sha256(data).hexdigest()} chunks={len(chunks)}'
-          )
-          PY
+          if ! grep -qw avx512f /proc/cpuinfo; then
+            echo 'FAIL: runner lacks AVX-512F; exactness gate not executed.' >&2
+            exit 75
           fi
+          /tmp/v29-evaluator-exact
