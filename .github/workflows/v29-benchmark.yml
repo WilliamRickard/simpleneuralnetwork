@@ -1,11 +1,8 @@
 name: v29 benchmark
 
-# Actions runner startup verified by v29-smoke before this run.
+# This workflow intentionally avoids marketplace actions because the repository
+# Actions policy permits shell steps but currently rejects external `uses:` steps.
 on:
-  pull_request:
-    paths:
-      - 'v29/**'
-      - '.github/workflows/v29-benchmark.yml'
   push:
     branches:
       - v29-phased-evaluator
@@ -19,7 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
       - name: CPU capabilities
         run: lscpu
       - name: Portable C++11 build
@@ -39,11 +41,7 @@ jobs:
         run: python3 v29/benchmark/run_full_training.py --pairs 7 --threads 4 --cooldown-ms 200 --output /tmp/v29-full-training.csv
       - name: Show matrix results
         if: always()
-        run: cat /tmp/v29-full-training.csv || true
-      - name: Upload matrix results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: v29-full-training-results
-          path: /tmp/v29-full-training.csv
-          if-no-files-found: ignore
+        run: |
+          echo '--- v29 full training CSV ---'
+          cat /tmp/v29-full-training.csv || true
+          echo '--- end CSV ---'
