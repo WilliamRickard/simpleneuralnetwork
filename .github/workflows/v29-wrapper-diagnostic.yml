@@ -69,6 +69,14 @@ jobs:
           PY
           test -z "$(git status --porcelain)"
 
+      - name: Require AVX-512F release runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then
+            echo 'Runner lacks AVX-512F; release execution was not attempted.' >&2
+            exit 75
+          fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+
       - name: Historical standalone compatibility builds v18-v26
         run: |
           for version in $(seq 18 26); do
@@ -102,14 +110,6 @@ jobs:
             -DSIMPLE_NN_USE_LIBMVEC v29/benchmark/full_training_benchmark.cpp \
             -lmvec -o /tmp/v29-full-training
           sha256sum /tmp/v29-evaluator-exact /tmp/v29-full-training
-
-      - name: Require AVX-512F release runner
-        run: |
-          if ! grep -qw avx512f /proc/cpuinfo; then
-            echo 'Runner lacks AVX-512F; release execution was not attempted.' >&2
-            exit 75
-          fi
-          grep -m1 '^model name' /proc/cpuinfo || true
 
       - name: Evaluator bit-exactness gate
         run: /tmp/v29-evaluator-exact
