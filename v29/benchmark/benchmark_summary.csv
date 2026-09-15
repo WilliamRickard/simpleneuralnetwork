@@ -14,3 +14,6 @@ rows,workers,pairs,group_tiles,median_speedup,p10_speedup,p90_speedup,wins,exact
 20000,4,25,12,1.1076,0.9602,1.1561,22,true,four-CPU quota saturated
 50000,4,25,12,1.0789,0.8038,1.4644,16,true,four-CPU quota saturated; noisy
 100000,4,25,12,1.1015,0.8272,1.2602,21,true,four-CPU quota saturated; noisy
+13300,1,13,12,1.2238,1.1514,1.2541,13,true,fresh Wine-derived 64-state evaluator replay; not historical full-training validation
+13300,3,13,12,1.1654,1.0383,1.2614,12,true,fresh Wine-derived 64-state evaluator replay; cgroup headroom
+13300,4,13,12,1.1198,0.8438,1.6032,9,true,fresh Wine-derived 64-state evaluator replay; four-CPU quota noisy
