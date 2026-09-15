@@ -1,0 +1,69 @@
+name: v30 no-PLT libmvec screen
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - '.github/workflows/v30-noplt.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  noplt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Require AVX-512F runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then exit 75; fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+
+      - name: Strict default and no-PLT builds
+        run: |
+          common='-std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC'
+          g++ $common v29/benchmark/full_training_benchmark.cpp -lmvec -o /tmp/v29-default
+          g++ $common -fno-plt v29/benchmark/full_training_benchmark.cpp -lmvec -o /tmp/v29-noplt
+          sha256sum /tmp/v29-default /tmp/v29-noplt
+
+      - name: Alternating v29 timing screen
+        run: |
+          python3 - <<'PY'
+          import statistics
+          import subprocess
+          import time
+
+          cases=[(20000,'0.0005'),(100000,'0.0005')]
+          for rows,target in cases:
+              values={'default':[],'noplt':[]}
+              for pair in range(9):
+                  order=('default','noplt') if pair%2==0 else ('noplt','default')
+                  for variant in order:
+                      time.sleep(.2)
+                      output=subprocess.check_output([
+                          f'/tmp/v29-{variant}',str(rows),target,'1','2','0'
+                      ],text=True)
+                      records=[]
+                      for line in output.splitlines():
+                          fields=line.split(',')
+                          if len(fields)==8:
+                              records.append(fields)
+                      if len(records)!=1:
+                          raise SystemExit(f'unexpected output for {variant}: {output}')
+                      values[variant].append(float(records[0][6]))
+              ratios=[a/b for a,b in zip(values['default'],values['noplt'])]
+              print(f'NOPLT rows={rows} target={target} median_speedup={statistics.median(ratios):.9f} wins={sum(x>1 for x in ratios)}/9')
+          PY
