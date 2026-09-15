@@ -13,6 +13,9 @@
 /* V28: reduce AVX-512 spill traffic across libmvec exp call boundaries. */
 #if defined(SIMPLE_NN_USE_LIBMVEC) && defined(__GLIBC__) && defined(__x86_64__) && defined(__GNUC__)
 
+static_assert(NUMBER_OF_VARIABLES==11&&HIDDEN_NODES==16,
+              "V28 call-boundary kernel requires the fixed 11->16->1 architecture");
+
 #define V28_DECLARE_W1(G) \
     __m512d g00=_mm512_loadu_pd((G)+0*HIDDEN_NODES), g01=_mm512_loadu_pd((G)+0*HIDDEN_NODES+8); \
     __m512d g10=_mm512_loadu_pd((G)+1*HIDDEN_NODES), g11=_mm512_loadu_pd((G)+1*HIDDEN_NODES+8); \
@@ -408,6 +411,7 @@ static void offlineRunV28(size_t rowCount,const OptimiserConfig&optimiser,double
         cout<<"Offline BFGS reached the maximum number of iterations before the target.\n";
 }
 
+#ifndef SIMPLE_NN_V28_NO_MAIN
 int main(){
     try{
         bool batchOnline=false,offline=false,test=true,randomiseWeights=false;
@@ -437,7 +441,7 @@ int main(){
             optimiser.threads=trainingThreads;
             offlineRunV28(offlineRows,optimiser,rangeWone,rangeWtwo,randomiseWeights,generator);
         }
-        if(test)testRunV9(testRows);
+        if(test)for(size_t i=0;i<times;i++)testRun(testRows);
         const chrono::duration<double> elapsed=chrono::steady_clock::now()-startTime;
         cout<<"Elapsed time = "<<elapsed.count()<<" seconds\n";
         return 0;
@@ -447,6 +451,7 @@ int main(){
         return 1;
     }
 }
+#endif
 
 #if defined(SIMPLE_NN_USE_LIBMVEC) && defined(__GLIBC__) && defined(__x86_64__) && defined(__GNUC__)
 #undef V28_DECLARE_W1
