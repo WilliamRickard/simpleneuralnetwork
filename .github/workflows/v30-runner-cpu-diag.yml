@@ -1,0 +1,27 @@
+name: v30 runner CPU quota diagnostic
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - '.github/workflows/v30-runner-cpu-diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cpu-diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: CPU topology and quota
+        run: |
+          echo "nproc=$(nproc)"
+          echo "nproc_all=$(nproc --all)"
+          grep -m1 '^model name' /proc/cpuinfo || true
+          grep -m1 '^Cpus_allowed_list' /proc/self/status || true
+          echo -n 'cpu.max='; cat /sys/fs/cgroup/cpu.max 2>/dev/null || true
+          echo -n 'cpuset='; cat /sys/fs/cgroup/cpuset.cpus.effective 2>/dev/null || true
+          lscpu | grep -E '^(CPU\(s\)|On-line CPU|Thread|Core|Socket|NUMA|Model name|Flags)' || true
+          if grep -qw avx512f /proc/cpuinfo; then echo AVX512=yes; else echo AVX512=no; fi
