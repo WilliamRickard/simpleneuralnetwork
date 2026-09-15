@@ -41,11 +41,12 @@ jobs:
         run: |
           python3 v30/benchmark/patch_forward_parallel.py
           python3 v30/benchmark/patch_forward_parallel_macros.py
+          python3 v30/benchmark/patch_forward_wavefront.py
           git diff --check
           g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
             -DSIMPLE_NN_USE_LIBMVEC v30/benchmark/full_training_benchmark.cpp \
-            -lmvec -o /tmp/v30-physical-forward
-          sha256sum /tmp/v30-physical-forward
+            -lmvec -o /tmp/v30-forward-wavefront
+          sha256sum /tmp/v30-forward-wavefront
 
       - name: Exact alternating training screen
         run: |
@@ -54,7 +55,7 @@ jobs:
           import subprocess
           for rows,target in ((5000,'0.0005'),(20000,'0.0005'),(100000,'0.0005')):
               output=subprocess.check_output([
-                  '/tmp/v30-physical-forward',str(rows),target,'5','2','200'
+                  '/tmp/v30-forward-wavefront',str(rows),target,'5','2','200'
               ],text=True)
               records=[]
               for line in output.splitlines():
@@ -64,5 +65,5 @@ jobs:
                   raise SystemExit(f'unexpected output rows={rows}:\n{output}')
               ratios=[float(r[7]) for r in records]
               updates={int(r[4]) for r in records}
-              print(f'PHYSICAL rows={rows} target={target} median_speedup={statistics.median(ratios):.9f} wins={sum(x>1 for x in ratios)}/5 updates={sorted(updates)} min={min(ratios):.9f} max={max(ratios):.9f}')
+              print(f'WAVEFRONT rows={rows} target={target} median_speedup={statistics.median(ratios):.9f} wins={sum(x>1 for x in ratios)}/5 updates={sorted(updates)} min={min(ratios):.9f} max={max(ratios):.9f}')
           PY
