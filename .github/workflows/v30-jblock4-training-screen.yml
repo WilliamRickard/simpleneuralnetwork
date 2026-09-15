@@ -75,3 +75,5 @@ jobs:
                   f'updates={sorted(updates)} min={min(ratios):.9f} max={max(ratios):.9f}'
               )
           PY
+
+# Revalidation marker after evaluator and scalar-GN screens.
