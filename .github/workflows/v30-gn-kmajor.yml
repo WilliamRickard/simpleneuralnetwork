@@ -6,6 +6,7 @@ on:
       - v30-profile
     paths:
       - '.github/workflows/v30-gn-kmajor.yml'
+      - 'v30/benchmark/patch_gn_kmajor.py'
   workflow_dispatch:
 
 permissions:
@@ -36,33 +37,7 @@ jobs:
         run: |
           common='-std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC'
           g++ $common v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-base
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('v30/benchmark/gn_candidate.cpp')
-          s=p.read_text()
-          old='''        for(size_t j=0;j<HIDDEN_NODES;j++){
-            const double outputJacobian=bases[j];
-            total.values[WONE_SIZE+j]+=static_cast<long double>(outputJacobian)*outputJacobian;
-            const double hiddenJacobianBase=bases[HIDDEN_NODES+j];
-            for(size_t k=0;k<NUMBER_OF_VARIABLES;k++){
-                const double jacobian=hiddenJacobianBase*x[k];
-                total.values[k*HIDDEN_NODES+j]+=static_cast<long double>(jacobian)*jacobian;
-            }
-        }'''
-          new='''        for(size_t j=0;j<HIDDEN_NODES;j++){
-            const double outputJacobian=bases[j];
-            total.values[WONE_SIZE+j]+=static_cast<long double>(outputJacobian)*outputJacobian;
-        }
-        for(size_t k=0;k<NUMBER_OF_VARIABLES;k++){
-            for(size_t j=0;j<HIDDEN_NODES;j++){
-                const double hiddenJacobianBase=bases[HIDDEN_NODES+j];
-                const double jacobian=hiddenJacobianBase*x[k];
-                total.values[k*HIDDEN_NODES+j]+=static_cast<long double>(jacobian)*jacobian;
-            }
-        }'''
-          if s.count(old)!=2: raise SystemExit(f'expected two GN reduction loops, found {s.count(old)}')
-          p.write_text(s.replace(old,new))
-          PY
+          python3 v30/benchmark/patch_gn_kmajor.py
           git diff --check
           g++ $common v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-kmajor
           sha256sum /tmp/gn-base /tmp/gn-kmajor
