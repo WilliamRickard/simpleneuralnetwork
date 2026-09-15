@@ -34,7 +34,7 @@ The release investigation also ran an external randomized differential stress wi
 Run the complete v28-v29 production wrapper matrix with:
 
 ```bash
-python3 v29/benchmark/run_full_training.py --pairs 7 --threads 4
+python3 v29/benchmark/run_full_training.py --pairs 7 --threads 4 --cooldown-ms 200
 ```
 
 The runner strictly compiles `full_training_benchmark.cpp` with:
@@ -43,6 +43,8 @@ The runner strictly compiles `full_training_benchmark.cpp` with:
 -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror
 -fopenmp -DSIMPLE_NN_USE_LIBMVEC -lmvec
 ```
+
+It also defaults `OMP_PROC_BIND=true`, `OMP_PLACES=cores` and `OMP_DYNAMIC=false` unless the caller has already supplied those variables.
 
 It then tests both deep targets, `0.001%` and `0.0005%`, at 5k, 10k, 20k, 50k and 100k rows.
 
@@ -55,7 +57,9 @@ Before any timing is accepted, each case runs `trainRangeV28` and `trainRangeV29
 
 The synthetic teacher targets are generated with the same AVX-512/libmvec production forward arithmetic, giving the benchmark an exactly representable optimum. A case fails if it reaches the target with zero updates, fails to reach the target, or changes the v28 trajectory.
 
-Timing pairs alternate execution order. The runner writes a CSV containing median, p10, p90, wins and update count for every row-count/target combination.
+Timing pairs alternate execution order. By default a 200 ms idle period is inserted before and between timed runs, outside the measured interval. This is deliberate: the benchmark host used during v28/v29 research has a 100 ms CPU-quota window, and sustained back-to-back four-worker tests were shown to create order-dependent frequency/throttling noise. The cooldown can be changed or disabled with `--cooldown-ms` when benchmarking on a different machine.
+
+The runner writes a CSV containing median, p10, p90, wins, cooldown and update count for every row-count/target combination.
 
 ## Release interpretation
 
