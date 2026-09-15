@@ -1,0 +1,77 @@
+name: v30 four-accumulator whole-training screen
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - '.github/workflows/v30-jblock4-training-screen.yml'
+      - 'v30/benchmark/patch_v30_jblock4.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  training-screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Require AVX-512F runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then exit 75; fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+
+      - name: Patch candidate and strict build
+        run: |
+          python3 v30/benchmark/patch_v30_parammajor_all.py
+          python3 v30/benchmark/patch_v30_jblock4.py
+          git diff --check
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
+            -DSIMPLE_NN_USE_LIBMVEC v30/benchmark/full_training_benchmark.cpp \
+            -lmvec -o /tmp/v30-jblock4-training
+          sha256sum /tmp/v30-jblock4-training
+
+      - name: Exact alternating whole-training screen
+        run: |
+          python3 - <<'PY'
+          import statistics
+          import subprocess
+
+          cases = [
+              (5000, '0.0005'),
+              (10000, '0.0005'),
+              (20000, '0.0005'),
+              (50000, '0.0005'),
+              (100000, '0.0005'),
+          ]
+          for rows, target in cases:
+              output = subprocess.check_output([
+                  '/tmp/v30-jblock4-training', str(rows), target, '5', '2', '200'
+              ], text=True)
+              records=[]
+              for line in output.splitlines():
+                  fields=line.split(',')
+                  if len(fields)==9 and fields[0].isdigit(): records.append(fields)
+              if len(records)!=5:
+                  raise SystemExit(f'unexpected benchmark output rows={rows}:\n{output}')
+              ratios=[float(r[7]) for r in records]
+              updates={int(r[4]) for r in records}
+              print(
+                  f'TRAIN rows={rows} target={target} '
+                  f'median_speedup={statistics.median(ratios):.9f} '
+                  f'wins={sum(x>1.0 for x in ratios)}/5 '
+                  f'updates={sorted(updates)} min={min(ratios):.9f} max={max(ratios):.9f}'
+              )
+          PY
