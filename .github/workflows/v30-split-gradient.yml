@@ -1,5 +1,6 @@
 name: v30 split-gradient evaluator
 
+# Branch-local exact evaluator experiment.
 on:
   push:
     branches:
