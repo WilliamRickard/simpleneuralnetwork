@@ -36,26 +36,35 @@ jobs:
         run: |
           common='-std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC'
           g++ $common v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-base
-          cp v30/benchmark/gn_candidate.cpp /tmp/gn-split8.cpp
-          cp v30/benchmark/gn_candidate.cpp /tmp/gn-split16.cpp
+          cp v30/benchmark/gn_candidate.cpp /tmp/gn-original.cpp
           python3 - <<'PY'
           from pathlib import Path
+          p=Path('v30/benchmark/gn_candidate.cpp')
+          s=p.read_text()
           old='    for(size_t j=0;j<HIDDEN_NODES;j++)hidden[j]=sigmoidV15(raw[j]);'
-          new8=('    double expv[HIDDEN_NODES];\n'
-                '    for(size_t j=0;j<8;j++)expv[j]=exp(-raw[j]);\n'
-                '    for(size_t j=0;j<8;j++)hidden[j]=1.0/(1.0+expv[j]);\n'
-                '    for(size_t j=8;j<HIDDEN_NODES;j++)expv[j]=exp(-raw[j]);\n'
-                '    for(size_t j=8;j<HIDDEN_NODES;j++)hidden[j]=1.0/(1.0+expv[j]);')
-          new16=('    double expv[HIDDEN_NODES];\n'
-                 '    for(size_t j=0;j<HIDDEN_NODES;j++)expv[j]=exp(-raw[j]);\n'
-                 '    for(size_t j=0;j<HIDDEN_NODES;j++)hidden[j]=1.0/(1.0+expv[j]);')
-          for path,new in ((Path('/tmp/gn-split8.cpp'),new8),(Path('/tmp/gn-split16.cpp'),new16)):
-              s=path.read_text()
-              if old not in s: raise SystemExit('scalar sigmoid loop not found')
-              path.write_text(s.replace(old,new,1))
+          new=('    double expv[HIDDEN_NODES];\n'
+               '    for(size_t j=0;j<8;j++)expv[j]=exp(-raw[j]);\n'
+               '    for(size_t j=0;j<8;j++)hidden[j]=1.0/(1.0+expv[j]);\n'
+               '    for(size_t j=8;j<HIDDEN_NODES;j++)expv[j]=exp(-raw[j]);\n'
+               '    for(size_t j=8;j<HIDDEN_NODES;j++)hidden[j]=1.0/(1.0+expv[j]);')
+          if old not in s: raise SystemExit('scalar sigmoid loop not found')
+          p.write_text(s.replace(old,new,1))
           PY
-          g++ $common -I. /tmp/gn-split8.cpp -lmvec -o /tmp/gn-split8
-          g++ $common -I. /tmp/gn-split16.cpp -lmvec -o /tmp/gn-split16
+          g++ $common v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-split8
+          cp /tmp/gn-original.cpp v30/benchmark/gn_candidate.cpp
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('v30/benchmark/gn_candidate.cpp')
+          s=p.read_text()
+          old='    for(size_t j=0;j<HIDDEN_NODES;j++)hidden[j]=sigmoidV15(raw[j]);'
+          new=('    double expv[HIDDEN_NODES];\n'
+               '    for(size_t j=0;j<HIDDEN_NODES;j++)expv[j]=exp(-raw[j]);\n'
+               '    for(size_t j=0;j<HIDDEN_NODES;j++)hidden[j]=1.0/(1.0+expv[j]);')
+          if old not in s: raise SystemExit('scalar sigmoid loop not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+          g++ $common v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-split16
+          cp /tmp/gn-original.cpp v30/benchmark/gn_candidate.cpp
           sha256sum /tmp/gn-base /tmp/gn-split8 /tmp/gn-split16
 
       - name: Exactness and timing
