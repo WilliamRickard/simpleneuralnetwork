@@ -1,6 +1,6 @@
-# v29: exact phased AVX-512 evaluator candidate
+# v29: exact phased AVX-512 evaluator
 
-V29 is an experimental successor to v28. It keeps the v28 arithmetic and optimiser policy but amortises evaluator state across several eight-row tiles.
+V29 is the validated successor to v28. It keeps the v28 arithmetic and optimiser policy but amortises evaluator state across several eight-row tiles.
 
 ## Motivation
 
@@ -27,7 +27,7 @@ No mathematical approximation is introduced.
 - The removed inter-tile gradient stores and reloads are exact double round-trips.
 - Fewer-than-eight-row tails delegate directly to `evaluateSliceV28`.
 
-A standalone production-style stress harness passed 425 worker configurations / 1,275 individual slice comparisons covering five seeds, 17 awkward row counts through 100,000, and one through five worker partitions. The in-repository benchmark directly includes `v29/main.cpp` so the same check can be run against the committed production kernel.
+The production exactness harness passed 425/425 worker configurations and 1,275/1,275 individual slice comparisons covering five seeds, 17 awkward row counts through 100,000, and one through five worker partitions.
 
 A second randomized differential stress passed 4,000/4,000 additional bit-exact slice comparisons. It varied start offsets, slice lengths, zero targets, feature scales from 0.05 to 50 and network-weight scales from 0.01 to 12, with occasional slices of roughly 5k to 100k rows. Metrics and all 192 gradient doubles matched exactly in every case.
 
@@ -41,7 +41,7 @@ Adjacent alternating-order paired evaluator measurements on the benchmark host g
 - 50k: 1.188x
 - 100k: 1.194x
 
-All five one-worker cases won at least 24/25 pairs. Three-worker medians remained positive, approximately 1.12x-1.21x, but short cases had wider tails. Four-worker tests remained positive in median but are contaminated by the host's known four-CPU cgroup saturation.
+All five one-worker cases won at least 24/25 pairs. Three-worker medians remained positive, approximately 1.12x-1.21x, but short cases had wider tails. Four-worker tests remained positive in median but were contaminated by the host's known four-CPU cgroup saturation.
 
 Standalone assembly inspection also reduced the evaluator function from roughly 3.5 KiB to 2.5 KiB and reduced observed ZMM stack references from 42 to 23.
 
@@ -65,9 +65,22 @@ This is a fresh evaluator stress rather than a replacement for the historical fu
 
 A finer 8/10/12/14/16-tile sweep did not justify increasing the production group beyond 12 tiles. Larger groups could win isolated single-worker cases, but 12 tiles was more robust at 50k and 100k under three- and four-worker partitioning. The retained 96-row group also leaves more L1 headroom.
 
-These remain candidate-level evaluator results, not yet a v29 release claim. Fresh full-optimiser 5k/10k/20k/50k/100k timing at both deep targets and a production full-training quality check remain release gates.
+### Full-training release matrix
 
-## Scope
+The final production v28-v29 matrix used two threads, seven alternating-order pairs per case, a 200 ms cooldown outside the timed interval, `OMP_PROC_BIND=true`, `OMP_PLACES=cores` and `OMP_DYNAMIC=false`. It tested 5k, 10k, 20k, 50k and 100k rows at both 0.001% and 0.0005% targets.
+
+All ten cases reached their targets with exact v28-v29 update counts, final metrics and all 192 final parameter doubles. V29 won all 70 timed pairs. Median whole-training speedups ranged from 1.155x to 1.322x; the 50k deep-target case reached 1.302x and the two 100k cases reached 1.262x and 1.322x. Every recorded p10 speedup remained above 1.14x.
+
+The retained release results are in `benchmark/full_training_summary.csv`.
+
+The release executables built from the committed source were byte-identical to the executables exercised on the AVX-512 release host:
+
+- evaluator SHA-256: `93064024d0a63b28a9044583edebdde5ddf8cd53f3ab3ad9a11694f044597e35`
+- full-training SHA-256: `c1c283a327b932f82030a0c974539f7fd493210ab6b9b03899eb24c2ec601daa`
+
+## Compatibility and scope
+
+The v18-v27 recursive source inclusion chain now uses explicit per-version no-main guards rather than nested `main` macro renaming. V18 also pre-includes the standard headers that otherwise first appeared inside its namespace boundary. Historical v18-v26 portable and accelerated standalone compatibility builds passed, and v27, v28 and v29 passed strict portable and accelerated C++11 builds with `-Wall -Wextra -Wpedantic -Werror`.
 
 The v29 optimiser wrapper preserves:
 
