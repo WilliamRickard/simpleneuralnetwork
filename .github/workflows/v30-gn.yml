@@ -1,0 +1,47 @@
+name: v30 exact GN candidates
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - 'v30/benchmark/gn_candidate.cpp'
+      - '.github/workflows/v30-gn.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gn-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Require AVX-512F runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then
+            echo 'Runner lacks AVX-512F; GN benchmark was not attempted.' >&2
+            exit 75
+          fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+
+      - name: Strict candidate build
+        run: |
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
+            -DSIMPLE_NN_USE_LIBMVEC v30/benchmark/gn_candidate.cpp \
+            -lmvec -o /tmp/v30-gn-candidate
+          sha256sum /tmp/v30-gn-candidate
+
+      - name: Exactness and paired timing
+        run: /tmp/v30-gn-candidate 15 2
