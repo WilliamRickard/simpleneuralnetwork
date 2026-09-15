@@ -4,6 +4,8 @@
 #include<chrono>
 #include<cmath>
 #include<cstddef>
+#include<cstdint>
+#include<cstring>
 #include<ctime>
 #include<deque>
 #include<exception>
@@ -62,6 +64,7 @@ static void batchOnlineRunV18(size_t iterations,size_t exampleSize,const Optimis
 static void offlineRunV18(size_t rowCount,const OptimiserConfig&optimiser,double rangeWone,double rangeWtwo,bool randomiseWeights,mt19937&generator){
     V9FeatureBounds bounds;Dataset data=loadDatasetV9(rowCount,bounds);Network network;if(randomiseWeights)setmatrixrandom(network,rangeWone,rangeWtwo,generator);else loadWeights(network);const TrainResult result=trainRangeV18(data,0,rowCount,0,network,optimiser);writeWeights(network);if(!result.reachedTarget)cout<<"Offline L-BFGS reached the maximum number of iterations before the target.\n";
 }
+#ifndef SIMPLE_NN_V18_NO_MAIN
 int main(){
     try{
         bool batchOnline=false,offline=false,test=true,randomiseWeights=false;double rangeWone=4.0,rangeWtwo=4.0,percentageErrorTarget=3.9;
@@ -76,3 +79,4 @@ int main(){
         const auto endTime=chrono::steady_clock::now();cout<<"Elapsed seconds: "<<chrono::duration<double>(endTime-startTime).count()<<'\n';return 0;
     }catch(const exception&error){cerr<<"Error: "<<error.what()<<'\n';return 1;}
 }
+#endif
