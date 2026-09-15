@@ -1,0 +1,57 @@
+name: v30 merged-v29 profile
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - 'v30/benchmark/profile_v29.cpp'
+      - '.github/workflows/v30-profile.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+          git status --porcelain
+
+      - name: Require AVX-512F profile runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then
+            echo 'Runner lacks AVX-512F; v30 profile was not attempted.' >&2
+            exit 75
+          fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+
+      - name: Strict profile build
+        run: |
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
+            -DSIMPLE_NN_USE_LIBMVEC v30/benchmark/profile_v29.cpp \
+            -lmvec -o /tmp/v30-profile-v29
+          sha256sum /tmp/v30-profile-v29
+
+      - name: Profile ten release cases
+        run: |
+          : > /tmp/v30-profile.txt
+          for rows in 5000 10000 20000 50000 100000; do
+            for target in 0.001 0.0005; do
+              echo "=== rows=${rows} target=${target} ===" | tee -a /tmp/v30-profile.txt
+              /tmp/v30-profile-v29 "${rows}" "${target}" 2 | tee -a /tmp/v30-profile.txt
+            done
+          done
+          echo '=== combined profile ==='
+          cat /tmp/v30-profile.txt
