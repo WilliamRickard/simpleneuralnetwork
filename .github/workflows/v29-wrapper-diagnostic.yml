@@ -1,0 +1,119 @@
+name: v29 wrapper diagnostic
+
+# Shell-only: repository policy rejects external `uses:` actions.
+on:
+  push:
+    branches:
+      - v29-phased-evaluator
+    paths:
+      - '.github/workflows/v29-wrapper-diagnostic.yml'
+  workflow_dispatch:
+
+jobs:
+  pointer-unused:
+    name: pointer-unused strict portable
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+      - name: Apply pointer-unused wrapper in workspace
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('v29/main.cpp')
+          s = p.read_text()
+          old = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define main v28_embedded_main\n#include "../v28/main.cpp"\n#undef main\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
+          new = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define SIMPLE_NN_V28_NO_MAIN\n#include "../v28/main.cpp"\n#undef SIMPLE_NN_V28_NO_MAIN\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\nstatic int (*const v29_keep_v27_embedded_main)() __attribute__((unused)) = &v27_embedded_main;\n#endif\n'''
+          if old not in s:
+              raise SystemExit('expected v29 include prologue not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git diff --check
+      - name: Strict portable C++11 compile
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror v29/main.cpp -o /tmp/v29-portable
+
+  pointer-used:
+    name: pointer-used strict portable
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+      - name: Apply pointer-used wrapper in workspace
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('v29/main.cpp')
+          s = p.read_text()
+          old = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define main v28_embedded_main\n#include "../v28/main.cpp"\n#undef main\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
+          new = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define SIMPLE_NN_V28_NO_MAIN\n#include "../v28/main.cpp"\n#undef SIMPLE_NN_V28_NO_MAIN\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\nstatic int (*const v29_keep_v27_embedded_main)() __attribute__((used)) = &v27_embedded_main;\n#endif\n'''
+          if old not in s:
+              raise SystemExit('expected v29 include prologue not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git diff --check
+      - name: Strict portable C++11 compile
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror v29/main.cpp -o /tmp/v29-portable
+
+  redeclare-unused:
+    name: redeclare-unused strict portable
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+      - name: Apply redeclare-unused wrapper in workspace
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('v29/main.cpp')
+          s = p.read_text()
+          old = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define main v28_embedded_main\n#include "../v28/main.cpp"\n#undef main\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
+          new = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define SIMPLE_NN_V28_NO_MAIN\n#include "../v28/main.cpp"\n#undef SIMPLE_NN_V28_NO_MAIN\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\nstatic int v27_embedded_main() __attribute__((unused));\n#endif\n'''
+          if old not in s:
+              raise SystemExit('expected v29 include prologue not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git diff --check
+      - name: Strict portable C++11 compile
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror v29/main.cpp -o /tmp/v29-portable
+
+  wrapper-unused:
+    name: wrapper-unused strict portable
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+      - name: Apply wrapper-unused reference in workspace
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('v29/main.cpp')
+          s = p.read_text()
+          old = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define main v28_embedded_main\n#include "../v28/main.cpp"\n#undef main\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
+          new = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define SIMPLE_NN_V28_NO_MAIN\n#include "../v28/main.cpp"\n#undef SIMPLE_NN_V28_NO_MAIN\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\nstatic int v29_keep_v27_embedded_main() __attribute__((unused));\nstatic int v29_keep_v27_embedded_main() { return v27_embedded_main(); }\n#endif\n'''
+          if old not in s:
+              raise SystemExit('expected v29 include prologue not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git diff --check
+      - name: Strict portable C++11 compile
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror v29/main.cpp -o /tmp/v29-portable
