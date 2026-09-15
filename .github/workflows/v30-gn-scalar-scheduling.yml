@@ -1,0 +1,60 @@
+name: v30 GN scalar scheduling screen
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - '.github/workflows/v30-gn-scalar-scheduling.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gn-scalar-scheduling:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Require AVX-512F runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then exit 75; fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+
+      - name: Build baseline, explicit-unroll and no-errno GN screens
+        run: |
+          common='-std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC'
+          g++ $common v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-base
+          cp v30/benchmark/gn_candidate.cpp /tmp/gn-unroll.cpp
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/gn-unroll.cpp')
+          s=p.read_text()
+          old='    for(size_t j=0;j<HIDDEN_NODES;j++)hidden[j]=sigmoidV15(raw[j]);'
+          new='\n'.join(f'    hidden[{j}]=sigmoidV15(raw[{j}]);' for j in range(16))
+          if old not in s: raise SystemExit('scalar sigmoid loop not found')
+          p.write_text(s.replace(old,new,1))
+          PY
+          g++ $common -I. /tmp/gn-unroll.cpp -lmvec -o /tmp/gn-unroll
+          g++ $common -fno-math-errno v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-noerrno
+          sha256sum /tmp/gn-base /tmp/gn-unroll /tmp/gn-noerrno
+
+      - name: Exactness and timing
+        run: |
+          echo 'BASE'
+          /tmp/gn-base 9 2
+          echo 'UNROLL'
+          /tmp/gn-unroll 9 2
+          echo 'NOERRNO'
+          /tmp/gn-noerrno 9 2
