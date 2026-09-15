@@ -50,8 +50,6 @@ jobs:
               text = text.replace(needle, f'\n#ifndef {guard}\nint main(){{\n', 1)
               file_path.write_text(text.rstrip() + '\n#endif\n')
 
-          # v18 namespaces the entire v17 source. These two standard headers are
-          # first introduced below that boundary, so include them globally first.
           replace_once(
               'v18/main.cpp',
               '#include<cstddef>\n#include<ctime>',
@@ -103,7 +101,7 @@ jobs:
             v29/benchmark/full_training_benchmark.cpp -lmvec -o /tmp/v29-full-training
           sha256sum /tmp/v29-evaluator-exact /tmp/v29-full-training
 
-      - name: Run AVX-512 gates or export exact executables
+      - name: Run AVX-512 gates or export chunked executables
         env:
           GH_TOKEN: ${{ github.token }}
           OMP_PROC_BIND: 'true'
@@ -115,7 +113,7 @@ jobs:
             python3 v29/benchmark/run_full_training.py --pairs 7 --threads 2 --cooldown-ms 200 --output /tmp/v29-full-training.csv
             cat /tmp/v29-full-training.csv
           else
-            echo 'Runner lacks AVX-512F; exporting exact workspace-patched executables.'
+            echo 'Runner lacks AVX-512F; exporting chunked exact workspace-patched executables.'
             xz -9 -k /tmp/v29-evaluator-exact
             xz -9 -k /tmp/v29-full-training
             python3 - <<'PY'
@@ -126,16 +124,15 @@ jobs:
           import urllib.request
           from pathlib import Path
 
-          for source in (Path('/tmp/v29-evaluator-exact.xz'), Path('/tmp/v29-full-training.xz')):
-              data = source.read_bytes()
-              destination = f'.github/diagnostics/{source.name}-{os.environ["GITHUB_RUN_ID"]}'
+          def upload_text(path: str, text: str) -> None:
+              """Create one small UTF-8 diagnostic chunk on the v29 branch."""
               payload = {
-                  'message': f'Export v29 benchmark executable {source.name}',
-                  'content': base64.b64encode(data).decode('ascii'),
+                  'message': f'Export v29 benchmark chunk {Path(path).name}',
+                  'content': base64.b64encode(text.encode('ascii')).decode('ascii'),
                   'branch': os.environ['GITHUB_REF_NAME'],
               }
               request = urllib.request.Request(
-                  'https://api.github.com/repos/' + os.environ['GITHUB_REPOSITORY'] + '/contents/' + destination,
+                  'https://api.github.com/repos/' + os.environ['GITHUB_REPOSITORY'] + '/contents/' + path,
                   data=json.dumps(payload).encode('utf-8'),
                   headers={
                       'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
@@ -146,6 +143,18 @@ jobs:
                   method='PUT',
               )
               urllib.request.urlopen(request).read()
-              print(f'exported {destination} bytes={len(data)} sha256={hashlib.sha256(data).hexdigest()}')
+
+          chunk_size = 24000
+          for source in (Path('/tmp/v29-full-training.xz'), Path('/tmp/v29-evaluator-exact.xz')):
+              data = source.read_bytes()
+              encoded = base64.b64encode(data).decode('ascii')
+              chunks = [encoded[i:i + chunk_size] for i in range(0, len(encoded), chunk_size)]
+              prefix = f'.github/diagnostics/{source.name}-{os.environ["GITHUB_RUN_ID"]}'
+              for index, chunk in enumerate(chunks):
+                  upload_text(f'{prefix}.part{index:02d}', chunk)
+              print(
+                  f'exported {source.name} bytes={len(data)} '
+                  f'sha256={hashlib.sha256(data).hexdigest()} chunks={len(chunks)}'
+              )
           PY
           fi
