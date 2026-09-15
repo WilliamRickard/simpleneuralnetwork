@@ -26,20 +26,55 @@ jobs:
           git fetch --depth=1 origin "${GITHUB_SHA}"
           git checkout --detach FETCH_HEAD
 
-      - name: Apply static-unused inherited-main wrapper in workspace
+      - name: Apply propagated no-main wrapper candidate in workspace
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('v29/main.cpp')
-          s = p.read_text()
-          old = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define main v28_embedded_main\n#include "../v28/main.cpp"\n#undef main\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
-          new = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#endif\n#define SIMPLE_NN_V28_NO_MAIN\n// v28 still embeds v27's old CLI main. Give that one inherited function\n// internal linkage and mark it unused so GCC can discard its legacy body.\n#define v27_embedded_main static __attribute__((unused)) v27_embedded_main\n#include "../v28/main.cpp"\n#undef v27_embedded_main\n#undef SIMPLE_NN_V28_NO_MAIN\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
-          if old not in s:
-              raise SystemExit('expected v29 include prologue not found')
-          p.write_text(s.replace(old, new, 1))
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'expected text not found in {path}: {old!r}')
+              p.write_text(text.replace(old, new, 1))
+
+          def guard_final_main(version):
+              p = Path(f'v{version}/main.cpp')
+              text = p.read_text()
+              guard = f'SIMPLE_NN_V{version}_NO_MAIN'
+              if f'#ifndef {guard}\nint main(){{' in text:
+                  return
+              needle = '\nint main(){\n'
+              if needle not in text:
+                  raise SystemExit(f'global main not found in v{version}/main.cpp')
+              text = text.replace(needle, f'\n#ifndef {guard}\nint main(){{\n', 1)
+              p.write_text(text.rstrip() + '\n#endif\n')
+
+          guard_final_main(18)
+
+          for version in range(19, 28):
+              previous = version - 1
+              replace_once(
+                  f'v{version}/main.cpp',
+                  f'#define main v{previous}_embedded_main\n#include "../v{previous}/main.cpp"\n#undef main',
+                  f'#define SIMPLE_NN_V{previous}_NO_MAIN\n#include "../v{previous}/main.cpp"\n#undef SIMPLE_NN_V{previous}_NO_MAIN',
+              )
+              guard_final_main(version)
+
+          replace_once(
+              'v28/main.cpp',
+              '#define main v27_embedded_main\n#include "../v27/main.cpp"\n#undef main',
+              '#define SIMPLE_NN_V27_NO_MAIN\n#include "../v27/main.cpp"\n#undef SIMPLE_NN_V27_NO_MAIN',
+          )
+          replace_once(
+              'v29/main.cpp',
+              '#define main v28_embedded_main\n#include "../v28/main.cpp"\n#undef main',
+              '#define SIMPLE_NN_V28_NO_MAIN\n#include "../v28/main.cpp"\n#undef SIMPLE_NN_V28_NO_MAIN',
+          )
           PY
           git diff --check
-          git diff -- v29/main.cpp
+          git diff --stat
+          git diff -- v18/main.cpp v19/main.cpp v27/main.cpp v28/main.cpp v29/main.cpp
 
       - name: Strict portable C++11 build
         env:
@@ -57,7 +92,7 @@ jobs:
           if len(log) > 50000:
               log = log[-50000:]
           body = (
-              'Automated v29 strict-portable diagnostic for commit `'
+              'Automated v29 propagated-no-main strict-portable diagnostic for commit `'
               + os.environ['GITHUB_SHA'] + '` failed. Compiler output:\n\n```text\n'
               + log + '\n```'
           )
@@ -80,6 +115,13 @@ jobs:
 
       - name: Strict accelerated C++11 build
         run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC v29/main.cpp -lmvec -o /tmp/v29-accelerated
+
+      - name: Backwards-compatible standalone strict builds
+        run: |
+          for version in 27 28; do
+            g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp "v${version}/main.cpp" -o "/tmp/v${version}-portable"
+            g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC "v${version}/main.cpp" -lmvec -o "/tmp/v${version}-accelerated"
+          done
 
       - name: Portable smoke
         run: /tmp/v29-portable | tail -n 2
