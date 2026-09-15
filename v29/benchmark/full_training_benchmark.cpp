@@ -26,32 +26,79 @@ static Network teacherNetworkV29(){
     return network;
 }
 
-static double scalarPredictionV29(const Network&network,const double*x){
-    double hidden[HIDDEN_NODES];
-    for(size_t j=0;j<HIDDEN_NODES;j++){
-        double z=0.0;
-        for(size_t k=0;k<NUMBER_OF_VARIABLES;k++)
-            z+=x[k]*network.wOne[k*HIDDEN_NODES+j];
-        hidden[j]=sigmoidV15(z);
+#if defined(SIMPLE_NN_USE_LIBMVEC) && defined(__GLIBC__) && defined(__x86_64__) && defined(__GNUC__)
+/** Generate targets with the same eight-row production forward arithmetic. */
+__attribute__((target("avx512f,avx512dq,fma")))
+static void fillTeacherTargetsV29(Dataset&data,const Network&teacher){
+    const __m512d zero=_mm512_setzero_pd();
+    size_t row=0;
+    for(;row+V17_FORWARD_ROWS<=data.y.size();row+=V17_FORWARD_ROWS){
+        const double*x[V17_FORWARD_ROWS];
+        __m512d rawLow[V17_FORWARD_ROWS],rawHigh[V17_FORWARD_ROWS];
+        for(size_t q=0;q<V17_FORWARD_ROWS;q++){
+            x[q]=data.x.rowData(row+q);
+            rawLow[q]=zero;
+            rawHigh[q]=zero;
+        }
+        for(size_t k=0;k<NUMBER_OF_VARIABLES;k++){
+            const __m512d weightsLow=_mm512_loadu_pd(teacher.wOne.data()+k*HIDDEN_NODES);
+            const __m512d weightsHigh=_mm512_loadu_pd(teacher.wOne.data()+k*HIDDEN_NODES+8);
+            for(size_t q=0;q<V17_FORWARD_ROWS;q++){
+                const __m512d value=_mm512_set1_pd(x[q][k]);
+                rawLow[q]=_mm512_fmadd_pd(value,weightsLow,rawLow[q]);
+                rawHigh[q]=_mm512_fmadd_pd(value,weightsHigh,rawHigh[q]);
+            }
+        }
+
+        alignas(64) double rawOutput[V17_FORWARD_ROWS];
+        for(size_t q=0;q<V17_FORWARD_ROWS;q++){
+            const __m512d hiddenLow=sigmoidVectorV17(rawLow[q]);
+            const __m512d hiddenHigh=sigmoidVectorV17(rawHigh[q]);
+            rawOutput[q]=_mm512_reduce_add_pd(_mm512_add_pd(
+                _mm512_mul_pd(hiddenLow,_mm512_loadu_pd(teacher.wTwo.data())),
+                _mm512_mul_pd(hiddenHigh,_mm512_loadu_pd(teacher.wTwo.data()+8))));
+        }
+        _mm512_storeu_pd(data.y.data()+row,
+                         sigmoidVectorV17(_mm512_load_pd(rawOutput)));
     }
-    double z=0.0;
-    for(size_t j=0;j<HIDDEN_NODES;j++)z+=hidden[j]*network.wTwo[j];
-    return sigmoidV15(z);
+
+    /* The release matrix row counts are multiples of eight, but keep a correct tail. */
+    for(;row<data.y.size();row++){
+        const double*x=data.x.rowData(row);
+        __m512d rawLow=zero,rawHigh=zero;
+        for(size_t k=0;k<NUMBER_OF_VARIABLES;k++){
+            const __m512d value=_mm512_set1_pd(x[k]);
+            rawLow=_mm512_fmadd_pd(value,
+                _mm512_loadu_pd(teacher.wOne.data()+k*HIDDEN_NODES),rawLow);
+            rawHigh=_mm512_fmadd_pd(value,
+                _mm512_loadu_pd(teacher.wOne.data()+k*HIDDEN_NODES+8),rawHigh);
+        }
+        const __m512d hiddenLow=sigmoidVectorV17(rawLow);
+        const __m512d hiddenHigh=sigmoidVectorV17(rawHigh);
+        const double rawOutput=_mm512_reduce_add_pd(_mm512_add_pd(
+            _mm512_mul_pd(hiddenLow,_mm512_loadu_pd(teacher.wTwo.data())),
+            _mm512_mul_pd(hiddenHigh,_mm512_loadu_pd(teacher.wTwo.data()+8))));
+        data.y[row]=sigmoidV15(rawOutput);
+    }
 }
+#endif
 
 static Dataset trainingDataV29(size_t rows){
     Dataset data;
     data.x=Matrix(rows,NUMBER_OF_VARIABLES);
     data.y.resize(rows);
-    const Network teacher=teacherNetworkV29();
     for(size_t r=0;r<rows;r++){
         double*x=data.x.rowData(r);
         for(size_t k=0;k<NUMBER_OF_VARIABLES;k++)
             x[k]=.62*sin(.0091*static_cast<double>((r+1)*(k+1)))
                 +.27*cos(.0067*static_cast<double>((r+5)*(k+2)))
                 +.08*sin(.0013*static_cast<double>((r+11)*(k+4)));
-        data.y[r]=scalarPredictionV29(teacher,x);
     }
+#if defined(SIMPLE_NN_USE_LIBMVEC) && defined(__GLIBC__) && defined(__x86_64__) && defined(__GNUC__)
+    fillTeacherTargetsV29(data,teacherNetworkV29());
+#else
+    throw runtime_error("v29 full-training benchmark requires the accelerated production path");
+#endif
     return data;
 }
 
