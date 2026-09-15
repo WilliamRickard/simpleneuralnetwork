@@ -10,10 +10,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  pointer-unused:
-    name: pointer-unused strict portable
+  diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 120
     steps:
       - name: Checkout exact pushed commit
         run: |
@@ -21,99 +20,55 @@ jobs:
           git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
           git fetch --depth=1 origin "${GITHUB_SHA}"
           git checkout --detach FETCH_HEAD
-      - name: Apply pointer-unused wrapper in workspace
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('v29/main.cpp')
-          s = p.read_text()
-          old = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define main v28_embedded_main\n#include "../v28/main.cpp"\n#undef main\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
-          new = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define SIMPLE_NN_V28_NO_MAIN\n#include "../v28/main.cpp"\n#undef SIMPLE_NN_V28_NO_MAIN\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\nstatic int (*const v29_keep_v27_embedded_main)() __attribute__((unused)) = &v27_embedded_main;\n#endif\n'''
-          if old not in s:
-              raise SystemExit('expected v29 include prologue not found')
-          p.write_text(s.replace(old, new, 1))
-          PY
-          git diff --check
-      - name: Strict portable C++11 compile
-        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror v29/main.cpp -o /tmp/v29-portable
 
-  pointer-used:
-    name: pointer-used strict portable
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout exact pushed commit
-        run: |
-          git init
-          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
-          git fetch --depth=1 origin "${GITHUB_SHA}"
-          git checkout --detach FETCH_HEAD
-      - name: Apply pointer-used wrapper in workspace
+      - name: Apply non-odr-use wrapper candidate in workspace
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('v29/main.cpp')
           s = p.read_text()
           old = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define main v28_embedded_main\n#include "../v28/main.cpp"\n#undef main\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
-          new = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define SIMPLE_NN_V28_NO_MAIN\n#include "../v28/main.cpp"\n#undef SIMPLE_NN_V28_NO_MAIN\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\nstatic int (*const v29_keep_v27_embedded_main)() __attribute__((used)) = &v27_embedded_main;\n#endif\n'''
+          new = '''#if defined(__GNUC__)\n// v28 inherits v27's internal CLI entry point.  Keep it unreferenced so the\n// compiler can discard obsolete CLI-only code without retaining its symbols.\n#pragma GCC diagnostic ignored "-Wunused-function"\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#endif\n#define SIMPLE_NN_V28_NO_MAIN\n#include "../v28/main.cpp"\n#undef SIMPLE_NN_V28_NO_MAIN\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
           if old not in s:
               raise SystemExit('expected v29 include prologue not found')
           p.write_text(s.replace(old, new, 1))
           PY
           git diff --check
-      - name: Strict portable C++11 compile
-        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror v29/main.cpp -o /tmp/v29-portable
+          git diff -- v29/main.cpp
 
-  redeclare-unused:
-    name: redeclare-unused strict portable
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout exact pushed commit
-        run: |
-          git init
-          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
-          git fetch --depth=1 origin "${GITHUB_SHA}"
-          git checkout --detach FETCH_HEAD
-      - name: Apply redeclare-unused wrapper in workspace
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('v29/main.cpp')
-          s = p.read_text()
-          old = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define main v28_embedded_main\n#include "../v28/main.cpp"\n#undef main\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
-          new = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define SIMPLE_NN_V28_NO_MAIN\n#include "../v28/main.cpp"\n#undef SIMPLE_NN_V28_NO_MAIN\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\nstatic int v27_embedded_main() __attribute__((unused));\n#endif\n'''
-          if old not in s:
-              raise SystemExit('expected v29 include prologue not found')
-          p.write_text(s.replace(old, new, 1))
-          PY
-          git diff --check
-      - name: Strict portable C++11 compile
-        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror v29/main.cpp -o /tmp/v29-portable
+      - name: Strict portable C++11 build
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp v29/main.cpp -o /tmp/v29-portable
 
-  wrapper-unused:
-    name: wrapper-unused strict portable
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout exact pushed commit
+      - name: Strict accelerated C++11 build
+        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC v29/main.cpp -lmvec -o /tmp/v29-accelerated
+
+      - name: Portable smoke
+        run: /tmp/v29-portable | tail -n 2
+
+      - name: Accelerated smoke
         run: |
-          git init
-          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
-          git fetch --depth=1 origin "${GITHUB_SHA}"
-          git checkout --detach FETCH_HEAD
-      - name: Apply wrapper-unused reference in workspace
+          if grep -qw avx512f /proc/cpuinfo; then
+            /tmp/v29-accelerated | tail -n 2
+          else
+            echo 'SKIP accelerated smoke: runner lacks AVX-512F'
+          fi
+
+      - name: Production evaluator exactness benchmark
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('v29/main.cpp')
-          s = p.read_text()
-          old = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define main v28_embedded_main\n#include "../v28/main.cpp"\n#undef main\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
-          new = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define SIMPLE_NN_V28_NO_MAIN\n#include "../v28/main.cpp"\n#undef SIMPLE_NN_V28_NO_MAIN\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\nstatic int v29_keep_v27_embedded_main() __attribute__((unused));\nstatic int v29_keep_v27_embedded_main() { return v27_embedded_main(); }\n#endif\n'''
-          if old not in s:
-              raise SystemExit('expected v29 include prologue not found')
-          p.write_text(s.replace(old, new, 1))
-          PY
-          git diff --check
-      - name: Strict portable C++11 compile
-        run: g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror v29/main.cpp -o /tmp/v29-portable
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC \
+            v29/benchmark/evaluator_exactness_benchmark.cpp -lmvec -o /tmp/v29-evaluator-exact
+          /tmp/v29-evaluator-exact
+
+      - name: Full training matrix
+        env:
+          OMP_PROC_BIND: 'true'
+          OMP_PLACES: cores
+          OMP_DYNAMIC: 'false'
+        run: python3 v29/benchmark/run_full_training.py --pairs 7 --threads 2 --cooldown-ms 200 --output /tmp/v29-full-training.csv
+
+      - name: Show matrix results
+        if: always()
+        run: |
+          echo '--- v29 full training CSV ---'
+          cat /tmp/v29-full-training.csv || true
+          echo '--- end CSV ---'
