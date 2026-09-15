@@ -1,0 +1,52 @@
+name: v30 GN four-accumulator reduction screen
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - '.github/workflows/v30-gn-jblock4.yml'
+      - 'v30/benchmark/patch_gn_jblock4.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gn-jblock4:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Require AVX-512F runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then exit 75; fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+
+      - name: Build parameter-major and four-accumulator variants
+        run: |
+          common='-std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC'
+          cp v30/benchmark/gn_candidate.cpp /tmp/gn-original.cpp
+          python3 v30/benchmark/patch_gn_parammajor_all.py
+          g++ $common v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-parammajor
+          python3 v30/benchmark/patch_gn_jblock4.py
+          git diff --check
+          g++ $common v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-jblock4
+          sha256sum /tmp/gn-parammajor /tmp/gn-jblock4
+
+      - name: Exactness and isolated GN timing
+        run: |
+          echo 'PARAMMAJOR'
+          /tmp/gn-parammajor 11 2
+          echo 'JBLOCK4'
+          /tmp/gn-jblock4 11 2
