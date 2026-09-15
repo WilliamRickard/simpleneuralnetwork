@@ -36,17 +36,18 @@ jobs:
         run: |
           common='-std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC'
           g++ $common v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-base
-          cp v30/benchmark/gn_candidate.cpp /tmp/gn-unroll.cpp
+          cp v30/benchmark/gn_candidate.cpp /tmp/gn-original.cpp
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('/tmp/gn-unroll.cpp')
+          p=Path('v30/benchmark/gn_candidate.cpp')
           s=p.read_text()
           old='    for(size_t j=0;j<HIDDEN_NODES;j++)hidden[j]=sigmoidV15(raw[j]);'
           new='\n'.join(f'    hidden[{j}]=sigmoidV15(raw[{j}]);' for j in range(16))
           if old not in s: raise SystemExit('scalar sigmoid loop not found')
           p.write_text(s.replace(old,new,1))
           PY
-          g++ $common -I. /tmp/gn-unroll.cpp -lmvec -o /tmp/gn-unroll
+          g++ $common v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-unroll
+          cp /tmp/gn-original.cpp v30/benchmark/gn_candidate.cpp
           g++ $common -fno-math-errno v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-noerrno
           sha256sum /tmp/gn-base /tmp/gn-unroll /tmp/gn-noerrno
 
