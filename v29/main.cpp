@@ -3,9 +3,9 @@
 #pragma GCC diagnostic ignored "-Wmisleading-indentation"
 #pragma GCC diagnostic ignored "-Wunused-function"
 #endif
-#define main v28_embedded_main
+#define SIMPLE_NN_V28_NO_MAIN
 #include "../v28/main.cpp"
-#undef main
+#undef SIMPLE_NN_V28_NO_MAIN
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
