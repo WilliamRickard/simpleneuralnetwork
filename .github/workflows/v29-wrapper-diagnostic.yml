@@ -21,14 +21,14 @@ jobs:
           git fetch --depth=1 origin "${GITHUB_SHA}"
           git checkout --detach FETCH_HEAD
 
-      - name: Apply non-odr-use wrapper candidate in workspace
+      - name: Apply static-unused inherited-main wrapper in workspace
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('v29/main.cpp')
           s = p.read_text()
           old = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define main v28_embedded_main\n#include "../v28/main.cpp"\n#undef main\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
-          new = '''#if defined(__GNUC__)\n// v28 inherits v27's internal CLI entry point.  Keep it unreferenced so the\n// compiler can discard obsolete CLI-only code without retaining its symbols.\n#pragma GCC diagnostic ignored "-Wunused-function"\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#endif\n#define SIMPLE_NN_V28_NO_MAIN\n#include "../v28/main.cpp"\n#undef SIMPLE_NN_V28_NO_MAIN\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
+          new = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#endif\n#define SIMPLE_NN_V28_NO_MAIN\n// v28 still embeds v27's old CLI main. Give that one inherited function\n// internal linkage and mark it unused so GCC can discard its legacy body.\n#define v27_embedded_main static __attribute__((unused)) v27_embedded_main\n#include "../v28/main.cpp"\n#undef v27_embedded_main\n#undef SIMPLE_NN_V28_NO_MAIN\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
           if old not in s:
               raise SystemExit('expected v29 include prologue not found')
           p.write_text(s.replace(old, new, 1))
