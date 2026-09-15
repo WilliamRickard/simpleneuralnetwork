@@ -29,7 +29,9 @@ No mathematical approximation is introduced.
 
 A standalone production-style stress harness passed 425 worker configurations / 1,275 individual slice comparisons covering five seeds, 17 awkward row counts through 100,000, and one through five worker partitions. The in-repository benchmark directly includes `v29/main.cpp` so the same check can be run against the committed production kernel.
 
-## Initial performance evidence
+A second randomized differential stress passed 4,000/4,000 additional bit-exact slice comparisons. It varied start offsets, slice lengths, zero targets, feature scales from 0.05 to 50 and network-weight scales from 0.01 to 12, with occasional slices of roughly 5k to 100k rows. Metrics and all 192 gradient doubles matched exactly in every case.
+
+## Performance evidence
 
 Adjacent alternating-order paired evaluator measurements on the benchmark host gave one-worker median speedups of approximately:
 
@@ -43,7 +45,27 @@ All five one-worker cases won at least 24/25 pairs. Three-worker medians remaine
 
 Standalone assembly inspection also reduced the evaluator function from roughly 3.5 KiB to 2.5 KiB and reduced observed ZMM stack references from 42 to 23.
 
-These are candidate-level evaluator results, not yet a v29 release claim. Full-optimiser and Wine validation remain release gates.
+### Wider-activation stress
+
+To check that the gain was not dependent on the mild synthetic activation range, the same paired evaluator test was repeated with network-weight scales from 0.25 through 64. Across 25 pairs per scale, median speedups stayed positive at roughly 1.13x-1.21x and the v29 result remained bit-exact.
+
+### Fresh Wine-derived evaluator replay
+
+The exact historical v25-v28 Wine preprocessing script is not retained in the repository, so v29 does not claim to reproduce the earlier 84.44% hold-out run from first principles. Instead, a new evaluator-only stress used scikit-learn's bundled UCI Wine data with a deterministic stratified 133/45 split, standardisation on the 133 training rows, the first 11 features to match the fixed network input count, and the 133-row training matrix repeated 100 times to 13,300 rows.
+
+A 64-state deterministic network replay then exercised a broad range of weight scales. All replay states were bit-exact between v28 and v29 before timing. Across 13 alternating-order paired replay measurements:
+
+- one worker: median 1.224x, 13/13 wins;
+- three workers: median 1.165x, 12/13 wins;
+- four workers: median 1.120x, 9/13 wins, with the known four-CPU quota noise.
+
+This is a fresh evaluator stress rather than a replacement for the historical full-training Wine validation.
+
+### Group-size tuning
+
+A finer 8/10/12/14/16-tile sweep did not justify increasing the production group beyond 12 tiles. Larger groups could win isolated single-worker cases, but 12 tiles was more robust at 50k and 100k under three- and four-worker partitioning. The retained 96-row group also leaves more L1 headroom.
+
+These remain candidate-level evaluator results, not yet a v29 release claim. Fresh full-optimiser 5k/10k/20k/50k/100k timing at both deep targets and a production full-training quality check remain release gates.
 
 ## Scope
 
