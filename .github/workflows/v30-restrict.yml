@@ -1,0 +1,65 @@
+name: v30 restrict alias screen
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - '.github/workflows/v30-restrict.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restrict-screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Require AVX-512F runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then exit 75; fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+
+      - name: Build and exactness gate
+        run: |
+          common='-std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC'
+          g++ $common v29/benchmark/full_training_benchmark.cpp -lmvec -o /tmp/v29-default
+          python3 v30/benchmark/patch_restrict.py
+          git diff --check
+          g++ $common v29/benchmark/evaluator_exactness_benchmark.cpp -lmvec -o /tmp/restrict-exact
+          g++ $common v29/benchmark/full_training_benchmark.cpp -lmvec -o /tmp/v29-restrict
+          /tmp/restrict-exact
+          sha256sum /tmp/v29-default /tmp/v29-restrict
+
+      - name: Alternating end-to-end screen
+        run: |
+          python3 - <<'PY'
+          import statistics
+          import subprocess
+          import time
+          for rows,target in ((20000,'0.0005'),(100000,'0.0005')):
+              ratios=[]
+              for pair in range(7):
+                  order=('default','restrict') if pair%2==0 else ('restrict','default')
+                  record={}
+                  for name in order:
+                      time.sleep(.2)
+                      output=subprocess.check_output([f'/tmp/v29-{name}',str(rows),target,'1','2','0'],text=True)
+                      lines=[line.split(',') for line in output.splitlines() if len(line.split(','))==8]
+                      if len(lines)!=1: raise SystemExit(output)
+                      record[name]=float(lines[0][6])
+                  ratios.append(record['default']/record['restrict'])
+              print(f'RESTRICT rows={rows} target={target} median_speedup={statistics.median(ratios):.9f} wins={sum(x>1 for x in ratios)}/7')
+          PY
