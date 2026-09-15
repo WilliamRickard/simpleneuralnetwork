@@ -1,0 +1,26 @@
+V28 release scope
+=================
+
+Base v27 merge commit:
+73ee69510c9b2651cef6084556d70f1a73a39923
+
+Reviewed v28 production main blob before PR:
+2962d1f2e0183edfd739d41eb6d42bcf647330be
+
+Intended scope:
+- v28/main.cpp
+- v28/README.md
+- v28/benchmark/README.md
+- v28/benchmark/benchmark_summary.csv
+- v28/benchmark/evaluator_exactness_benchmark.cpp
+- v28/benchmark/experiments.txt
+- v28/benchmark/release_scope.txt
+
+No v27-or-earlier file is modified.
+
+Production change:
+- repeated deep-target AVX-512 evaluator only;
+- preserve v27 sub-50k Gauss-Newton policy;
+- preserve v26/v20 50k+ Gauss-Newton grouping;
+- preserve dense BFGS, line search mathematics, stopping rules and final confirmation;
+- preserve executable test wrapper behaviour.
