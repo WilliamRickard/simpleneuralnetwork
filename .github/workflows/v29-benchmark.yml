@@ -1,6 +1,6 @@
 name: v29 benchmark
 
-# Retry marker after repository Actions setup was enabled.
+# Actions runner startup verified by v29-smoke before this run.
 on:
   pull_request:
     paths:
