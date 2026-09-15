@@ -1,0 +1,75 @@
+name: v30 GN k-major reduction screen
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - '.github/workflows/v30-gn-kmajor.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gn-kmajor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Require AVX-512F runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then exit 75; fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+
+      - name: Build baseline and k-major candidate
+        run: |
+          common='-std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC'
+          g++ $common v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-base
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('v30/benchmark/gn_candidate.cpp')
+          s=p.read_text()
+          old='''        for(size_t j=0;j<HIDDEN_NODES;j++){
+            const double outputJacobian=bases[j];
+            total.values[WONE_SIZE+j]+=static_cast<long double>(outputJacobian)*outputJacobian;
+            const double hiddenJacobianBase=bases[HIDDEN_NODES+j];
+            for(size_t k=0;k<NUMBER_OF_VARIABLES;k++){
+                const double jacobian=hiddenJacobianBase*x[k];
+                total.values[k*HIDDEN_NODES+j]+=static_cast<long double>(jacobian)*jacobian;
+            }
+        }'''
+          new='''        for(size_t j=0;j<HIDDEN_NODES;j++){
+            const double outputJacobian=bases[j];
+            total.values[WONE_SIZE+j]+=static_cast<long double>(outputJacobian)*outputJacobian;
+        }
+        for(size_t k=0;k<NUMBER_OF_VARIABLES;k++){
+            for(size_t j=0;j<HIDDEN_NODES;j++){
+                const double hiddenJacobianBase=bases[HIDDEN_NODES+j];
+                const double jacobian=hiddenJacobianBase*x[k];
+                total.values[k*HIDDEN_NODES+j]+=static_cast<long double>(jacobian)*jacobian;
+            }
+        }'''
+          if s.count(old)!=2: raise SystemExit(f'expected two GN reduction loops, found {s.count(old)}')
+          p.write_text(s.replace(old,new))
+          PY
+          git diff --check
+          g++ $common v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/gn-kmajor
+          sha256sum /tmp/gn-base /tmp/gn-kmajor
+
+      - name: Exactness and isolated GN timing
+        run: |
+          echo 'BASE'
+          /tmp/gn-base 11 2
+          echo 'KMAJOR'
+          /tmp/gn-kmajor 11 2
