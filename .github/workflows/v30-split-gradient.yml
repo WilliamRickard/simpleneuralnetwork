@@ -1,0 +1,41 @@
+name: v30 split-gradient evaluator
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - 'v30/benchmark/evaluator_split_gradient.cpp'
+      - '.github/workflows/v30-split-gradient.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  split-gradient:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+      - name: Require AVX-512F runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then exit 75; fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+      - name: Strict build
+        run: |
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
+            -DSIMPLE_NN_USE_LIBMVEC v30/benchmark/evaluator_split_gradient.cpp \
+            -lmvec -o /tmp/v30-split-gradient
+          sha256sum /tmp/v30-split-gradient
+      - name: Exactness and timing
+        run: /tmp/v30-split-gradient
