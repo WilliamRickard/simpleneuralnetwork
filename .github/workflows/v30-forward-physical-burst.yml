@@ -40,6 +40,7 @@ jobs:
       - name: Patch and strict build
         run: |
           python3 v30/benchmark/patch_forward_parallel.py
+          python3 v30/benchmark/patch_forward_parallel_macros.py
           git diff --check
           g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
             -DSIMPLE_NN_USE_LIBMVEC v30/benchmark/full_training_benchmark.cpp \
