@@ -34,10 +34,13 @@ jobs:
           from pathlib import Path
           p=Path('v30/benchmark/gn_candidate.cpp')
           s=p.read_text()
+          old_attr='__attribute__((target("avx512f,avx512dq"),optimize("fp-contract=off")))'
+          new_attr='__attribute__((target("avx512f,avx512dq,fma"),optimize("fp-contract=off")))'
           old='    for(size_t j=0;j<HIDDEN_NODES;j++)hidden[j]=sigmoidV15(raw[j]);'
           new='    _mm512_store_pd(hidden,sigmoidVectorV17(_mm512_load_pd(raw)));\n    _mm512_store_pd(hidden+8,sigmoidVectorV17(_mm512_load_pd(raw+8)));'
-          if old not in s: raise SystemExit('GN hidden sigmoid line not found')
-          p.write_text(s.replace(old,new,1))
+          if old_attr not in s or old not in s: raise SystemExit('GN candidate pattern not found')
+          s=s.replace(old_attr,new_attr,1).replace(old,new,1)
+          p.write_text(s)
           PY
           g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
             -DSIMPLE_NN_USE_LIBMVEC v30/benchmark/gn_candidate.cpp -lmvec -o /tmp/v30-gn-vector
