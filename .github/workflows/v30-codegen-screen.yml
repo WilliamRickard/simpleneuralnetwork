@@ -1,0 +1,79 @@
+name: v30 exact v29 codegen screen
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - '.github/workflows/v30-codegen-screen.yml'
+      - 'v30/benchmark/codegen_v29.cpp'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codegen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Require AVX-512F runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then exit 75; fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+          echo "nproc=$(nproc)"
+
+      - name: Strict builds
+        run: |
+          common='-std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC'
+          g++ $common v30/benchmark/codegen_v29.cpp -lmvec -o /tmp/cg-default
+          g++ $common -mtune=native v30/benchmark/codegen_v29.cpp -lmvec -o /tmp/cg-mtune
+          g++ $common -funroll-loops v30/benchmark/codegen_v29.cpp -lmvec -o /tmp/cg-unroll
+          g++ $common -flto v30/benchmark/codegen_v29.cpp -lmvec -o /tmp/cg-lto
+          g++ $common -mtune=native -funroll-loops v30/benchmark/codegen_v29.cpp -lmvec -o /tmp/cg-tune-unroll
+          sha256sum /tmp/cg-*
+
+      - name: Exactness and alternating timing
+        run: |
+          python3 - <<'PY'
+          import os
+          import statistics
+          import subprocess
+          import time
+
+          variants=('mtune','unroll','lto','tune-unroll')
+          for rows,target in ((20000,'0.0005'),(100000,'0.0005')):
+              # Establish the baseline signature once, then require every variant to match byte-for-byte.
+              subprocess.check_output(['/tmp/cg-default',str(rows),target,'2','/tmp/sig-default'],text=True)
+              for variant in variants:
+                  subprocess.check_output([f'/tmp/cg-{variant}',str(rows),target,'2',f'/tmp/sig-{variant}'],text=True)
+                  if open('/tmp/sig-default','rb').read()!=open(f'/tmp/sig-{variant}','rb').read():
+                      raise SystemExit(f'EXACTNESS FAIL rows={rows} variant={variant}')
+
+              for variant in variants:
+                  ratios=[]
+                  for pair in range(5):
+                      record={}
+                      order=('default',variant) if pair%2==0 else (variant,'default')
+                      for name in order:
+                          time.sleep(.2)
+                          out=subprocess.check_output([
+                              f'/tmp/cg-{name}',str(rows),target,'2',f'/tmp/sig-run-{name}'
+                          ],text=True).strip()
+                          record[name]=float(out.split(',')[0])
+                      if open('/tmp/sig-run-default','rb').read()!=open(f'/tmp/sig-run-{variant}','rb').read():
+                          raise SystemExit(f'PAIR EXACTNESS FAIL rows={rows} variant={variant}')
+                      ratios.append(record['default']/record[variant])
+                  print(f'CODEGEN rows={rows} target={target} variant={variant} median_speedup={statistics.median(ratios):.9f} wins={sum(x>1 for x in ratios)}/5 min={min(ratios):.9f} max={max(ratios):.9f}')
+          PY
