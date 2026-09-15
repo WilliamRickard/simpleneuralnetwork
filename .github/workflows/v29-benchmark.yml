@@ -31,7 +31,7 @@ jobs:
           path = Path('v29/main.cpp')
           text = path.read_text()
           old = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define main v28_embedded_main\n#include "../v28/main.cpp"\n#undef main\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
-          new = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define SIMPLE_NN_V28_NO_MAIN\n#if defined(__GNUC__)\n#define v27_embedded_main __attribute__((used)) v27_embedded_main\n#endif\n#include "../v28/main.cpp"\n#if defined(__GNUC__)\n#undef v27_embedded_main\n#endif\n#undef SIMPLE_NN_V28_NO_MAIN\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n#endif\n'''
+          new = '''#if defined(__GNUC__)\n#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wmisleading-indentation"\n#pragma GCC diagnostic ignored "-Wunused-function"\n#endif\n#define SIMPLE_NN_V28_NO_MAIN\n#include "../v28/main.cpp"\n#undef SIMPLE_NN_V28_NO_MAIN\n#if defined(__GNUC__)\n#pragma GCC diagnostic pop\n__attribute__((used)) static int (*const v29_keep_v27_embedded_main)() = &v27_embedded_main;\n#else\nstatic int (*const v29_keep_v27_embedded_main)() = &v27_embedded_main;\n#endif\n'''
           if old not in text:
               raise SystemExit('expected v29 include prologue not found')
           path.write_text(text.replace(old, new, 1))
