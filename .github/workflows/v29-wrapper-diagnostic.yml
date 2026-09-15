@@ -50,6 +50,14 @@ jobs:
               text = text.replace(needle, f'\n#ifndef {guard}\nint main(){{\n', 1)
               p.write_text(text.rstrip() + '\n#endif\n')
 
+          # v18 namespaces the entire v17 source. Pre-include the two standard
+          # headers first introduced below that boundary so libstdc++ never
+          # sees them for the first time inside namespace v18_v17.
+          replace_once(
+              'v18/main.cpp',
+              '#include<cstddef>\n#include<ctime>',
+              '#include<cstddef>\n#include<cstdint>\n#include<cstring>\n#include<ctime>',
+          )
           guard_final_main(18)
 
           for version in range(19, 28):
