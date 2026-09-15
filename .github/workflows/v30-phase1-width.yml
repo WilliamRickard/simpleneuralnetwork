@@ -1,0 +1,115 @@
+name: v30 Phase 1 width screen
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - '.github/workflows/v30-phase1-width.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  phase1-width:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Require AVX-512F runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then exit 75; fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+
+      - name: Build default and exact wider Phase 1 candidates
+        run: |
+          common='-std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC'
+          g++ $common v29/benchmark/full_training_benchmark.cpp -lmvec -o /tmp/v29-default
+          for width in 10 12 14; do
+            git checkout -- v29/main.cpp
+            WIDTH="$width" python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          width=int(os.environ['WIDTH'])
+          path=Path('v29/main.cpp')
+          text=path.read_text()
+          begin=text.index('        /* Phase 1: first layer and hidden sigmoids, retaining v28 row arithmetic. */')
+          end=text.index('        /* Phase 2: output dot products with output weights live across the group. */',begin)
+          replacement=f'''        /* Experimental exact Phase 1 width {width}: each row keeps the inherited k-order FMAs. */
+          for(size_t block=0;block<groupRows;block+={width}){{
+              const size_t rowsInBlock=min(size_t({width}),groupRows-block);
+              const double*x[{width}];
+              __m512d rawLow[{width}],rawHigh[{width}];
+              for(size_t q=0;q<rowsInBlock;q++){{
+                  x[q]=data.x.rowData(row+block+q);
+                  rawLow[q]=zero;
+                  rawHigh[q]=zero;
+              }}
+              for(size_t k=0;k<NUMBER_OF_VARIABLES;k++){{
+                  const __m512d weightsLow=_mm512_loadu_pd(network.wOne.data()+k*HIDDEN_NODES);
+                  const __m512d weightsHigh=_mm512_loadu_pd(network.wOne.data()+k*HIDDEN_NODES+8);
+                  for(size_t q=0;q<rowsInBlock;q++){{
+                      const __m512d value=_mm512_set1_pd(x[q][k]);
+                      rawLow[q]=_mm512_fmadd_pd(value,weightsLow,rawLow[q]);
+                      rawHigh[q]=_mm512_fmadd_pd(value,weightsHigh,rawHigh[q]);
+                  }}
+              }}
+              double*blockHidden=hidden+block*HIDDEN_NODES;
+              for(size_t q=0;q<rowsInBlock;q++){{
+                  double*h=blockHidden+q*HIDDEN_NODES;
+                  _mm512_store_pd(h,sigmoidVectorV17(rawLow[q]));
+                  _mm512_store_pd(h+8,sigmoidVectorV17(rawHigh[q]));
+              }}
+          }}
+
+          '''
+          path.write_text(text[:begin]+replacement+text[end:])
+          PY
+            git diff --check
+            g++ $common v29/benchmark/full_training_benchmark.cpp -lmvec -o "/tmp/v29-w${width}"
+          done
+          git checkout -- v29/main.cpp
+          sha256sum /tmp/v29-default /tmp/v29-w10 /tmp/v29-w12 /tmp/v29-w14
+
+      - name: Alternating end-to-end screen
+        run: |
+          python3 - <<'PY'
+          import statistics
+          import subprocess
+          import time
+
+          cases=[(20000,'0.0005'),(100000,'0.0005')]
+          variants=('w10','w12','w14')
+          for rows,target in cases:
+              for variant in variants:
+                  baseline=[]
+                  candidate=[]
+                  for pair in range(5):
+                      order=('default',variant) if pair%2==0 else (variant,'default')
+                      record={}
+                      for name in order:
+                          time.sleep(.2)
+                          output=subprocess.check_output([
+                              f'/tmp/v29-{name}',str(rows),target,'1','2','0'
+                          ],text=True)
+                          lines=[line.split(',') for line in output.splitlines() if len(line.split(','))==8]
+                          if len(lines)!=1:
+                              raise SystemExit(f'unexpected output {name}: {output}')
+                          record[name]=float(lines[0][6])
+                      baseline.append(record['default'])
+                      candidate.append(record[variant])
+                  ratios=[a/b for a,b in zip(baseline,candidate)]
+                  print(f'WIDTH rows={rows} target={target} variant={variant} median_speedup={statistics.median(ratios):.9f} wins={sum(x>1 for x in ratios)}/5')
+          PY
