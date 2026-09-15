@@ -8,6 +8,7 @@
 #pragma GCC diagnostic pop
 #endif
 
+#include <cstdio>
 #include <cstring>
 #include <iomanip>
 #include <sstream>
@@ -83,7 +84,7 @@ static double timedTrainingV29(F function){
     function();
     const auto finish=chrono::steady_clock::now();
     cout.rdbuf(old);
-    remove("ybar.txt");
+    std::remove("ybar.txt");
     return chrono::duration<double>(finish-start).count();
 }
 
@@ -116,8 +117,8 @@ int main(int argc,char**argv){
         cerr<<"FAIL: v28/v29 full-training results differ\n";
         return 3;
     }
-    if(!result28.reachedTarget){
-        cerr<<"FAIL: benchmark problem did not reach target\n";
+    if(!result28.reachedTarget||result28.updates==0){
+        cerr<<"FAIL: benchmark problem did not exercise a non-trivial converged trajectory\n";
         return 4;
     }
 
