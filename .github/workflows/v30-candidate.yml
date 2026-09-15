@@ -1,0 +1,77 @@
+name: v30 combined candidate
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - 'v30/main.cpp'
+      - 'v30/benchmark/full_training_benchmark.cpp'
+      - '.github/workflows/v30-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Require AVX-512F runner
+        run: |
+          if ! grep -qw avx512f /proc/cpuinfo; then
+            echo 'Runner lacks AVX-512F; v30 candidate was not attempted.' >&2
+            exit 75
+          fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+
+      - name: Strict v30 builds
+        run: |
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
+            v30/main.cpp -o /tmp/v30-portable
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
+            -DSIMPLE_NN_USE_LIBMVEC v30/main.cpp -lmvec -o /tmp/v30-accelerated
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
+            -DSIMPLE_NN_USE_LIBMVEC v30/benchmark/full_training_benchmark.cpp \
+            -lmvec -o /tmp/v30-full-training
+          sha256sum /tmp/v30-full-training
+
+      - name: Five-pair full-training screen
+        run: |
+          : > /tmp/v30-screen.csv
+          for rows in 5000 10000 20000 50000 100000; do
+            for target in 0.001 0.0005; do
+              /tmp/v30-full-training "${rows}" "${target}" 5 2 200 | tee -a /tmp/v30-screen.csv
+            done
+          done
+          python3 - <<'PY'
+          import statistics
+          from pathlib import Path
+
+          rows=[]
+          for line in Path('/tmp/v30-screen.csv').read_text().splitlines():
+              fields=line.split(',')
+              if len(fields)!=9:
+                  continue
+              n,target,threads,pair,updates,t29,t30,speedup,ybar=fields
+              rows.append((int(n),float(target),float(speedup)))
+          if len(rows)!=50:
+              raise SystemExit(f'expected 50 timing rows, got {len(rows)}')
+          print('rows,target,median_speedup,wins')
+          for n in (5000,10000,20000,50000,100000):
+              for target in (0.001,0.0005):
+                  values=[s for rn,rt,s in rows if rn==n and rt==target]
+                  print(f'{n},{target},{statistics.median(values):.6f},{sum(s>1 for s in values)}/5')
+          PY
