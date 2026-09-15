@@ -12,6 +12,7 @@
 #include <cstring>
 #include <iomanip>
 #include <sstream>
+#include <thread>
 
 static Network teacherNetworkV29(){
     Network network;
@@ -135,6 +136,11 @@ static double timedTrainingV29(F function){
     return chrono::duration<double>(finish-start).count();
 }
 
+static void cooldownV29(size_t milliseconds){
+    if(milliseconds!=0)
+        this_thread::sleep_for(chrono::milliseconds(milliseconds));
+}
+
 int main(int argc,char**argv){
     if(!supportsV16Kernel()){
         cout<<"SKIP: AVX-512/libmvec production kernel unavailable\n";
@@ -145,6 +151,7 @@ int main(int argc,char**argv){
     const double target=argc>2?atof(argv[2]):.001;
     const int pairs=argc>3?atoi(argv[3]):7;
     const size_t threads=argc>4?strtoull(argv[4],nullptr,10):4;
+    const size_t cooldownMs=argc>5?strtoull(argv[5],nullptr,10):200;
     if(rows==0||pairs<=0||threads==0)return 2;
 
     Dataset data=trainingDataV29(rows);
@@ -158,8 +165,11 @@ int main(int argc,char**argv){
     /* Untimed equality gate on the exact production wrappers. */
     Network exact28=initial,exact29=initial;
     TrainResult result28,result29;
+    cooldownV29(cooldownMs);
     timedTrainingV29([&]{result28=trainRangeV28(data,0,rows,0,exact28,config);});
+    cooldownV29(cooldownMs);
     timedTrainingV29([&]{result29=trainRangeV29(data,0,rows,0,exact29,config);});
+    cooldownV29(cooldownMs);
     if(!sameResultV29(result28,result29,exact28,exact29)){
         cerr<<"FAIL: v28/v29 full-training results differ\n";
         return 3;
@@ -174,13 +184,17 @@ int main(int argc,char**argv){
         Network n28=initial,n29=initial;
         TrainResult r28,r29;
         double t28=0.0,t29=0.0;
+        cooldownV29(cooldownMs);
         if((pair&1)==0){
             t28=timedTrainingV29([&]{r28=trainRangeV28(data,0,rows,0,n28,config);});
+            cooldownV29(cooldownMs);
             t29=timedTrainingV29([&]{r29=trainRangeV29(data,0,rows,0,n29,config);});
         }else{
             t29=timedTrainingV29([&]{r29=trainRangeV29(data,0,rows,0,n29,config);});
+            cooldownV29(cooldownMs);
             t28=timedTrainingV29([&]{r28=trainRangeV28(data,0,rows,0,n28,config);});
         }
+        cooldownV29(cooldownMs);
         if(!sameResultV29(r28,r29,n28,n29)){
             cerr<<"FAIL: pair "<<pair<<" changed trajectory\n";
             return 5;
