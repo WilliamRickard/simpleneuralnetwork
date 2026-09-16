@@ -1,0 +1,88 @@
+name: v30 hidden sigmoid batch screen
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - '.github/workflows/v30-hidden-sigmoid-batch.yml'
+      - 'v30/benchmark/patch_hidden_sigmoid_batch.py'
+      - 'v30/benchmark/codegen_v29.cpp'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  batch-screen:
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [1, 2, 3, 4, 5, 6]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OMP_PROC_BIND: true
+      OMP_PLACES: cores
+      OMP_DYNAMIC: false
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Require AVX-512F runner
+        run: |
+          echo "slot=${{ matrix.slot }}"
+          if ! grep -qw avx512f /proc/cpuinfo; then exit 75; fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+
+      - name: Build exact baseline and batch candidate
+        run: |
+          common='-std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp -DSIMPLE_NN_USE_LIBMVEC'
+          g++ $common v30/benchmark/codegen_v29.cpp -lmvec -o /tmp/base
+          cp v29/main.cpp /tmp/v29-main.cpp
+          python3 v30/benchmark/patch_hidden_sigmoid_batch.py
+          g++ $common v30/benchmark/codegen_v29.cpp -lmvec -o /tmp/batch
+          mv /tmp/v29-main.cpp v29/main.cpp
+          sha256sum /tmp/base /tmp/batch
+          echo '--- candidate exp call neighbourhood ---'
+          objdump -d -Mintel /tmp/batch | grep -B6 -A10 '_ZGVeN8v_exp@plt' | head -120 || true
+
+      - name: Exact alternating training screen
+        run: |
+          python3 - <<'PY'
+          import os
+          import statistics
+          import subprocess
+          import time
+
+          cases=((5000,'0.0005'),(20000,'0.0005'),(100000,'0.0005'))
+          for rows,target in cases:
+              subprocess.check_output(['/tmp/base',str(rows),target,'2','/tmp/sig-base'],text=True)
+              subprocess.check_output(['/tmp/batch',str(rows),target,'2','/tmp/sig-batch'],text=True)
+              if open('/tmp/sig-base','rb').read()!=open('/tmp/sig-batch','rb').read():
+                  raise SystemExit(f'EXACTNESS FAIL rows={rows} target={target}')
+
+              ratios=[]
+              for pair in range(5):
+                  record={}
+                  order=('base','batch') if pair%2==0 else ('batch','base')
+                  for name in order:
+                      time.sleep(.2)
+                      out=subprocess.check_output([
+                          f'/tmp/{name}',str(rows),target,'2',f'/tmp/sig-{name}'
+                      ],text=True).strip()
+                      record[name]=float(out.split(',')[0])
+                  if open('/tmp/sig-base','rb').read()!=open('/tmp/sig-batch','rb').read():
+                      raise SystemExit(f'PAIR EXACTNESS FAIL rows={rows} target={target}')
+                  ratios.append(record['base']/record['batch'])
+              print(
+                  f'BATCH_SIGMOID rows={rows} target={target} '
+                  f'median_speedup={statistics.median(ratios):.9f} '
+                  f'wins={sum(x>1 for x in ratios)}/5 '
+                  f'min={min(ratios):.9f} max={max(ratios):.9f}'
+              )
+          PY
