@@ -14,6 +14,10 @@ permissions:
 
 jobs:
   phase-profile:
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [1, 2, 3, 4, 5, 6]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -30,6 +34,7 @@ jobs:
 
       - name: Require AVX-512F runner
         run: |
+          echo "slot=${{ matrix.slot }}"
           if ! grep -qw avx512f /proc/cpuinfo; then
             echo 'Runner lacks AVX-512F; evaluator phase profile was not attempted.' >&2
             exit 75
