@@ -10,7 +10,7 @@
 
 extern "C" __m512d _ZGVeN8v_exp(__m512d);
 
-extern "C" __attribute__((noinline,noclone,noipa,target("avx512f")))
+extern "C" __attribute__((noinline,noclone,noipa,target("avx512f,avx512dq")))
 __m512d v30_vec_noop(__m512d x){
     asm volatile("" : "+v"(x) : : "memory");
     return x;
@@ -19,7 +19,7 @@ __m512d v30_vec_noop(__m512d x){
 using VecFn=__m512d(*)(__m512d);
 alignas(64) static volatile double v30_sink[8];
 
-__attribute__((target("avx512f")))
+__attribute__((target("avx512f,avx512dq")))
 static double runV30(VecFn fn,std::size_t iterations){
     alignas(64) const double values[8][8]={
         {-8.0,-4.0,-2.0,-1.0,-.5,.25,.75,1.25},
