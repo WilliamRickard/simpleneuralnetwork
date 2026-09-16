@@ -1,0 +1,41 @@
+name: v30 libmvec call overhead
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - '.github/workflows/v30-libmvec-call-overhead.yml'
+      - 'v30/benchmark/libmvec_call_overhead.cpp'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  call-overhead:
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [1, 2, 3, 4, 5, 6]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+      - name: Require AVX-512F runner
+        run: |
+          echo "slot=${{ matrix.slot }}"
+          if ! grep -qw avx512f /proc/cpuinfo; then exit 75; fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+      - name: Strict build
+        run: |
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -mavx512f \
+            v30/benchmark/libmvec_call_overhead.cpp -lmvec -o /tmp/call-overhead
+          sha256sum /tmp/call-overhead
+      - name: Measure
+        run: /tmp/call-overhead
