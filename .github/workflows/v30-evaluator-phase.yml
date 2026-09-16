@@ -6,6 +6,7 @@ on:
       - v30-profile
     paths:
       - '.github/workflows/v30-evaluator-phase.yml'
+      - 'v30/benchmark/evaluator_phase_profile.cpp'
   workflow_dispatch:
 
 permissions:
@@ -37,7 +38,6 @@ jobs:
 
       - name: Strict build
         run: |
-          sed -i '/repeat=0;repeat< nine/d' v30/benchmark/evaluator_phase_profile.cpp
           g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -fopenmp \
             -DSIMPLE_NN_USE_LIBMVEC v30/benchmark/evaluator_phase_profile.cpp \
             -lmvec -o /tmp/v30-evaluator-phase
