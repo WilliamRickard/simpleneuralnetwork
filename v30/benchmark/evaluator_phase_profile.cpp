@@ -244,7 +244,6 @@ int main(){
         }
 
         vector<uint64_t> linear,sigmoid,dot,metrics,backprop;
-        for(int repeat=0;repeat< nine;repeat++){}
         for(int repeat=0;repeat<9;repeat++){
             V15ThreadEvaluation output;
             V30EvaluatorPhaseCycles measured;
