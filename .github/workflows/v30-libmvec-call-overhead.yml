@@ -34,7 +34,7 @@ jobs:
           grep -m1 '^model name' /proc/cpuinfo || true
       - name: Strict build
         run: |
-          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -mavx512f \
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -mavx512f -mavx512dq \
             v30/benchmark/libmvec_call_overhead.cpp -lmvec -o /tmp/call-overhead
           sha256sum /tmp/call-overhead
       - name: Measure
