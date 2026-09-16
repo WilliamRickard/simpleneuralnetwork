@@ -15,6 +15,10 @@ permissions:
 
 jobs:
   profile:
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [1, 2, 3, 4, 5, 6]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -32,6 +36,7 @@ jobs:
 
       - name: Require AVX-512F profile runner
         run: |
+          echo "slot=${{ matrix.slot }}"
           if ! grep -qw avx512f /proc/cpuinfo; then
             echo 'Runner lacks AVX-512F; v30 profile was not attempted.' >&2
             exit 75
@@ -45,14 +50,13 @@ jobs:
             -lmvec -o /tmp/v30-profile-v29
           sha256sum /tmp/v30-profile-v29
 
-      - name: Profile ten release cases
+      - name: Profile representative deep-target cases
         run: |
           : > /tmp/v30-profile.txt
-          for rows in 5000 10000 20000 50000 100000; do
-            for target in 0.001 0.0005; do
-              echo "=== rows=${rows} target=${target} ===" | tee -a /tmp/v30-profile.txt
-              /tmp/v30-profile-v29 "${rows}" "${target}" 2 | tee -a /tmp/v30-profile.txt
-            done
+          for rows in 5000 50000 100000; do
+            target=0.0005
+            echo "=== rows=${rows} target=${target} ===" | tee -a /tmp/v30-profile.txt
+            /tmp/v30-profile-v29 "${rows}" "${target}" 2 | tee -a /tmp/v30-profile.txt
           done
           echo '=== combined profile ==='
           cat /tmp/v30-profile.txt
