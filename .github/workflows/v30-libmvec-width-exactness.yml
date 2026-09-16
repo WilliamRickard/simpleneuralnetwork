@@ -91,7 +91,7 @@ jobs:
               return 0;
           }
           CPP
-          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror /tmp/libmvec_width.cpp -lmvec -o /tmp/libmvec_width
+          g++ -std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -mavx512f -mavx512dq -mavx2 /tmp/libmvec_width.cpp -lmvec -o /tmp/libmvec_width
 
       - name: Run bitwise differential
         run: /tmp/libmvec_width
