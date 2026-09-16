@@ -1,0 +1,47 @@
+name: v30 libmvec direct call overhead
+
+on:
+  push:
+    branches:
+      - v30-profile
+    paths:
+      - '.github/workflows/v30-libmvec-direct-call-overhead.yml'
+      - 'v30/benchmark/libmvec_direct_call_overhead.cpp'
+      - 'v30/benchmark/libmvec_external_noop.cpp'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  direct-call-overhead:
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: [1, 2, 3, 4, 5, 6]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact pushed commit
+        run: |
+          git init
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+      - name: Require AVX-512F runner
+        run: |
+          echo "slot=${{ matrix.slot }}"
+          if ! grep -qw avx512f /proc/cpuinfo; then exit 75; fi
+          grep -m1 '^model name' /proc/cpuinfo || true
+      - name: Strict build shared no-op and benchmark
+        run: |
+          common='-std=c++11 -O3 -Wall -Wextra -Wpedantic -Werror -mavx512f -mavx512dq'
+          g++ $common -fPIC -shared v30/benchmark/libmvec_external_noop.cpp -o /tmp/libv30noop.so
+          g++ $common v30/benchmark/libmvec_direct_call_overhead.cpp \
+            -L/tmp -Wl,-rpath,/tmp -lv30noop -lmvec -o /tmp/direct-call-overhead
+          sha256sum /tmp/libv30noop.so /tmp/direct-call-overhead
+          objdump -d -Mintel /tmp/direct-call-overhead | grep -E 'call.*(_ZGVeN8v_exp|v30_external_vec_noop)' | head -20 || true
+      - name: Measure
+        env:
+          LD_BIND_NOW: '1'
+        run: /tmp/direct-call-overhead
